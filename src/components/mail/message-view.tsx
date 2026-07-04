@@ -5,6 +5,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { useMailStore } from "@/stores/mail-store";
 import { formatMessageDate, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/dialog-provider";
 import {
   ArchiveIcon,
   ForwardIcon,
@@ -13,8 +14,14 @@ import {
   StarIcon,
   TrashIcon,
   ClockIcon,
+  ShieldIcon,
 } from "./icons";
 import { toast } from "sonner";
+
+function isPgpBody(text?: string | null, html?: string | null) {
+  const source = text || html || "";
+  return source.includes("-----BEGIN PGP MESSAGE-----");
+}
 
 export function MessageView() {
   const {
@@ -26,8 +33,15 @@ export function MessageView() {
     messages,
     openCompose,
   } = useMailStore();
+  const { prompt, alert } = useDialog();
   const [showRemote, setShowRemote] = useState(false);
   const [headersOpen, setHeadersOpen] = useState(false);
+  const [decrypted, setDecrypted] = useState<string | null>(null);
+  const [decrypting, setDecrypting] = useState(false);
+
+  useEffect(() => {
+    setDecrypted(null);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -97,9 +111,49 @@ export function MessageView() {
     );
   }
 
-  const html = selectedMessage.html
-    ? DOMPurify.sanitize(selectedMessage.html)
-    : `<pre style="white-space:pre-wrap;font-family:inherit">${selectedMessage.text || ""}</pre>`;
+  const html = decrypted
+    ? `<pre style="white-space:pre-wrap;font-family:inherit">${decrypted
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")}</pre>`
+    : selectedMessage.html
+      ? DOMPurify.sanitize(selectedMessage.html)
+      : `<pre style="white-space:pre-wrap;font-family:inherit">${(selectedMessage.text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</pre>`;
+  const pgpLocked = !decrypted && isPgpBody(selectedMessage.text, selectedMessage.html);
+
+  async function decryptPgp() {
+    const armored = selectedMessage?.text || selectedMessage?.html || "";
+    const passphrase = await prompt({
+      title: "Decrypt message",
+      description: "Enter your private key passphrase if it has one. Leave blank if none.",
+      label: "Passphrase",
+      inputType: "password",
+      confirmLabel: "Decrypt",
+    });
+    if (passphrase === null) return;
+    setDecrypting(true);
+    try {
+      const res = await fetch("/api/mail/decrypt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ armored, passphrase: passphrase || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Decrypt failed");
+      setDecrypted(data.plaintext);
+      toast.success("Message decrypted");
+    } catch (e) {
+      await alert({
+        title: "Could not decrypt",
+        description: e instanceof Error ? e.message : "Decrypt failed",
+      });
+    } finally {
+      setDecrypting(false);
+    }
+  }
 
   async function act(action: "archive" | "trash" | "flag") {
     const summary = messages.find((m) => m.id === selectedId);
@@ -257,6 +311,24 @@ export function MessageView() {
                 Show
               </button>
             </div>
+          </div>
+        )}
+
+        {pgpLocked && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-[10px] border border-border bg-accent-tint px-3 py-2 text-[12px] text-text">
+            <span className="flex items-center gap-2">
+              <ShieldIcon size={14} />
+              This message is PGP-encrypted.
+            </span>
+            <Button size="sm" variant="secondary" onClick={decryptPgp} disabled={decrypting}>
+              {decrypting ? "Decrypting…" : "Decrypt"}
+            </Button>
+          </div>
+        )}
+
+        {decrypted && (
+          <div className="mt-4 rounded-[10px] border border-border bg-surface px-3 py-2 text-[12px] text-ok">
+            Decrypted with your private key.
           </div>
         )}
 

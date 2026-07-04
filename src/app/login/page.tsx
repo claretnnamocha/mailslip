@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
@@ -12,6 +12,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [zitadelEnabled, setZitadelEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((r) => r.json())
+      .then((providers) => setZitadelEnabled(Boolean(providers?.zitadel)))
+      .catch(() => setZitadelEnabled(false));
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -52,7 +60,7 @@ export default function LoginPage() {
               mono
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ada@aurelia.studio"
+              placeholder="you@example.com"
               required
             />
             <Input
@@ -60,9 +68,6 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              hint={
-                <span className="text-[13px] font-medium text-accent">Forgot?</span>
-              }
               required
             />
             {error && <p className="text-[13px] text-danger">{error}</p>}
@@ -71,31 +76,31 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="mono text-[12px] text-text-3">OR</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
+          {zitadelEnabled && (
+            <>
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="mono text-[12px] text-text-3">OR</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
 
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            onClick={() => signIn("zitadel", { callbackUrl: "/mail" })}
-          >
-            Continue with Zitadel
-          </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={() => signIn("zitadel", { callbackUrl: "/mail" })}
+              >
+                Continue with Zitadel
+              </Button>
+            </>
+          )}
         </div>
 
         <p className="mt-6 text-center text-[14px] text-text-2">
           New to Mailslip?{" "}
-          <Link href="/login" className="font-medium text-accent">
+          <Link href="/register" className="font-medium text-accent">
             Create an account
           </Link>
-        </p>
-        <p className="mt-3 text-center text-[12px] text-text-3">
-          Dev login: <span className="mono">ada@mailslip.local</span> /{" "}
-          <span className="mono">mailslip</span>
         </p>
       </div>
     </div>

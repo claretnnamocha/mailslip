@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+docs
+.env
+.env.*
+!.env.example
+docker/postgres
+agent-transcripts
+.DS_Store
+coverage
+npm-debug.log*

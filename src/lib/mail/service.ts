@@ -30,18 +30,8 @@ import {
   setJmapKeywords,
   testJmapConnection,
 } from "./jmap";
-import {
-  demoFolders,
-  getDemoMessage,
-  listDemoMessages,
-  searchDemoMessages,
-} from "./demo";
 import { messageMatchesScope } from "./scoped";
 import type { ConnectionConfig, MailMessageSummary, SendPayload } from "./types";
-
-function useDemo() {
-  return process.env.DEMO_MAIL === "true";
-}
 
 function toConfig(identity: MailIdentity, password: string): ConnectionConfig {
   return {
@@ -83,10 +73,6 @@ export async function testIdentityConnection(
 ) {
   const config = toConfig(identity as MailIdentity, password);
 
-  if (useDemo()) {
-    return { incoming: { ok: true as const, messages: 4, unseen: 2 }, outgoing: { ok: true as const } };
-  }
-
   let incoming: { ok: true; messages: number; unseen: number };
   if (identity.incomingProtocol === "POP3") {
     incoming = await testPop3Connection(config);
@@ -96,13 +82,15 @@ export async function testIdentityConnection(
     incoming = await testImapConnection(config);
   }
 
-  const outgoing =
-    identity.incomingProtocol === "JMAP"
-      ? { ok: true as const }
-      : identity.smtpHost
-        ? await testSmtpConnection(config)
-        : { ok: true as const, note: "No SMTP configured" };
+  if (identity.incomingProtocol === "JMAP") {
+    return { incoming, outgoing: { ok: true as const } };
+  }
 
+  if (!identity.smtpHost) {
+    throw new Error("SMTP host is required for sending");
+  }
+
+  const outgoing = await testSmtpConnection(config);
   return { incoming, outgoing };
 }
 
@@ -115,7 +103,6 @@ function meta(identity: MailIdentity) {
 }
 
 export async function fetchFolders(identity: MailIdentity) {
-  if (useDemo()) return demoFolders;
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -129,22 +116,6 @@ export async function fetchMessages(
   identity: MailIdentity,
   folder = "INBOX",
 ): Promise<MailMessageSummary[]> {
-  if (useDemo()) {
-    let messages = listDemoMessages(folder).map((m) => ({
-      ...m,
-      remoteId: String(m.uid),
-      identityId: identity.id,
-      identityEmail: identity.email,
-      identityColor: identity.color,
-    }));
-    if (identity.type === "SCOPED_ALIAS" && identity.recipientFilter) {
-      messages = messages.filter(
-        (m) => m.identityEmail?.toLowerCase() === identity.recipientFilter!.toLowerCase(),
-      );
-    }
-    return messages;
-  }
-
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -180,32 +151,12 @@ export async function fetchMessage(
   remoteId?: string,
 ) {
   const key = remoteId || String(uid);
-
-  if (useDemo()) {
-    const msg = getDemoMessage(uid);
-    if (!msg) return null;
-    if (
-      identity.type === "SCOPED_ALIAS" &&
-      identity.recipientFilter &&
-      !messageMatchesScope(msg, identity.recipientFilter, identity.matchHeader)
-    ) {
-      return null;
-    }
-    return {
-      ...msg,
-      remoteId: String(msg.uid),
-      identityId: identity.id,
-      identityEmail: identity.email,
-      identityColor: identity.color,
-    };
-  }
-
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   const m = meta(identity);
 
-  let msg =
+  const msg =
     backing.incomingProtocol === "POP3"
       ? await getPop3Message(config, Number(key), m)
       : backing.incomingProtocol === "JMAP"
@@ -233,7 +184,6 @@ export async function updateMessageFlags(
   flags: { seen?: boolean; flagged?: boolean },
   remoteId?: string,
 ) {
-  if (useDemo()) return { ok: true };
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -254,7 +204,6 @@ export async function moveMail(
   destination: string,
   remoteId?: string,
 ) {
-  if (useDemo()) return { ok: true };
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -273,10 +222,6 @@ export async function moveMail(
 }
 
 export async function sendIdentityMail(identity: MailIdentity, payload: SendPayload) {
-  if (useDemo()) {
-    return { messageId: `<demo-${Date.now()}@mailslip.local>`, accepted: payload.to };
-  }
-
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -322,15 +267,6 @@ export async function sendIdentityMail(identity: MailIdentity, payload: SendPayl
 }
 
 export async function searchIdentityMail(identity: MailIdentity, query: string, folder = "INBOX") {
-  if (useDemo()) {
-    return searchDemoMessages(query).map((m) => ({
-      ...m,
-      remoteId: String(m.uid),
-      identityId: identity.id,
-      identityEmail: identity.email,
-      identityColor: identity.color,
-    }));
-  }
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
@@ -354,14 +290,6 @@ export async function searchIdentityMail(identity: MailIdentity, query: string, 
 }
 
 export async function fetchQuota(identity: MailIdentity) {
-  if (useDemo()) {
-    return {
-      supported: true as const,
-      used: 420_000_000,
-      limit: 15_000_000_000,
-      message: "Demo quota",
-    };
-  }
   if (identity.type === "SCOPED_ALIAS") {
     return {
       supported: false as const,

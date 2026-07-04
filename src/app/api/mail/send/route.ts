@@ -4,7 +4,8 @@ import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { canAccessIdentity } from "@/lib/identities";
 import { sendIdentityMail } from "@/lib/mail/service";
-import { encryptMessage } from "@/lib/pgp";
+import { decryptSecret } from "@/lib/crypto";
+import { encryptMessage, signAndEncryptMessage } from "@/lib/pgp";
 
 const schema = z.object({
   identityId: z.string(),
@@ -18,6 +19,8 @@ const schema = z.object({
   references: z.array(z.string()).optional(),
   scheduleAt: z.string().datetime().optional(),
   encrypt: z.boolean().optional(),
+  sign: z.boolean().optional(),
+  passphrase: z.string().optional(),
   attachments: z
     .array(
       z.object({
@@ -39,7 +42,6 @@ export async function POST(request: Request) {
     return jsonError("Forbidden", 403);
   }
 
-  // Blocked senders check
   const blocked = await prisma.blockedSender.findMany({
     where: { userId: authResult.userId },
   });
@@ -56,6 +58,57 @@ export async function POST(request: Request) {
     }
   }
 
+  let html = body.html;
+  let text = body.text;
+
+  if (body.encrypt) {
+    const recipients = body.to.map((e) => e.toLowerCase());
+    const keys = await prisma.pgpKey.findMany({
+      where: { email: { in: recipients } },
+    });
+    const missing = recipients.filter((email) => !keys.some((k) => k.email === email));
+    if (missing.length > 0) {
+      return jsonError(
+        `No PGP public key for: ${missing.join(", ")}. Add keys in Settings → Encryption.`,
+        400,
+      );
+    }
+    const plain = text || html?.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "") || "";
+    try {
+      if (body.sign) {
+        const ownKey = await prisma.pgpKey.findFirst({
+          where: {
+            userId: authResult.userId,
+            privateKeyEnc: { not: null },
+          },
+          orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+        });
+        if (!ownKey?.privateKeyEnc) {
+          return jsonError("No private PGP key on file to sign with", 400);
+        }
+        text = await signAndEncryptMessage(
+          plain,
+          keys.map((k) => k.publicKey),
+          decryptSecret(ownKey.privateKeyEnc),
+          body.passphrase,
+        );
+      } else {
+        text = await encryptMessage(
+          plain,
+          keys.map((k) => k.publicKey),
+        );
+      }
+      html = undefined;
+    } catch (e) {
+      return jsonError(e instanceof Error ? e.message : "PGP encryption failed", 400);
+    }
+  }
+
+  if (body.attachments?.length) {
+    const names = body.attachments.map((a) => a.filename).join(", ");
+    text = `${text || ""}\n\n[Attachments: ${names}]`;
+  }
+
   if (body.scheduleAt) {
     const sendAt = new Date(body.scheduleAt);
     if (sendAt.getTime() <= Date.now()) return jsonError("scheduleAt must be in the future");
@@ -67,37 +120,12 @@ export async function POST(request: Request) {
         cc: body.cc || [],
         bcc: body.bcc || [],
         subject: body.subject,
-        htmlBody: body.html,
-        textBody: body.text,
+        htmlBody: html,
+        textBody: text,
         sendAt,
       },
     });
     return NextResponse.json({ scheduled: true, id: row.id, sendAt: row.sendAt });
-  }
-
-  let html = body.html;
-  let text = body.text;
-
-  if (body.encrypt) {
-    const keys = await prisma.pgpKey.findMany({
-      where: { email: { in: body.to } },
-    });
-    if (keys.length === 0) {
-      return jsonError("No PGP public keys found for recipients", 400);
-    }
-    const plain = text || html || "";
-    const encrypted = await encryptMessage(
-      plain,
-      keys.map((k) => k.publicKey),
-    );
-    text = encrypted;
-    html = undefined;
-  }
-
-  // Attachments note: stored as text markers for demo; real MIME multipart would go here
-  if (body.attachments?.length) {
-    const names = body.attachments.map((a) => a.filename).join(", ");
-    text = `${text || ""}\n\n[Attachments: ${names}]`;
   }
 
   try {

@@ -1,0 +1,17 @@
+# Railway config for the Zitadel service.
+# In Railway: New → GitHub Repo → set Root Directory to /docker (or point
+# Dockerfile path to docker/zitadel/Dockerfile from repo root).
+#
+# Postgres is a separate Railway plugin service — do not bundle DB in this deploy.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "zitadel/Dockerfile"
+watchPatterns = ["zitadel/**"]
+
+[deploy]
+startCommand = "/app/zitadel start-from-init --masterkeyFromEnv --tlsMode external"
+healthcheckPath = "/debug/healthz"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

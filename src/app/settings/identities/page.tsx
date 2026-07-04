@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/dialog-provider";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ type Identity = {
 
 export default function IdentitiesSettingsPage() {
   const [identities, setIdentities] = useState<Identity[]>([]);
+  const { confirm } = useDialog();
 
   async function load() {
     const res = await fetch("/api/identities");
@@ -32,7 +34,14 @@ export default function IdentitiesSettingsPage() {
   }, []);
 
   async function disconnect(id: string) {
-    if (!confirm("Disconnect this identity? Mail on your server is never touched.")) return;
+    const ok = await confirm({
+      title: "Disconnect identity?",
+      description:
+        "Mailslip will remove this connection. Mail on your own server is never touched.",
+      confirmLabel: "Disconnect",
+      tone: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/identities/${id}`, { method: "DELETE" });
     if (!res.ok) {
       toast.error("Could not disconnect");

@@ -18,7 +18,7 @@ export default async function LandingPage() {
               Sign in
             </Button>
           </Link>
-          <Link href="/login">
+          <Link href="/register">
             <Button variant="dark" size="sm">
               Get started
             </Button>
@@ -41,7 +41,7 @@ export default async function LandingPage() {
           and manage all of it in one place. Your servers, your data, zero lock-in.
         </p>
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/login">
+          <Link href="/register">
             <Button size="lg">Get started free</Button>
           </Link>
           <Link href="/login">

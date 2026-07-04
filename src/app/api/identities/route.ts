@@ -81,12 +81,10 @@ export async function POST(request: Request) {
     try {
       await testIdentityConnection(draft as never, body.password);
     } catch (e) {
-      if (process.env.DEMO_MAIL !== "true") {
-        return jsonError(
-          e instanceof Error ? e.message : "Connection test failed",
-          400,
-        );
-      }
+      return jsonError(
+        e instanceof Error ? e.message : "Connection test failed",
+        400,
+      );
     }
     const domain = body.email.split("@")[1];
     if (domain) {

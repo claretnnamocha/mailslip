@@ -11,19 +11,27 @@ if (process.env.ZITADEL_CLIENT_ID && process.env.ZITADEL_ISSUER) {
     Zitadel({
       issuer: process.env.ZITADEL_ISSUER,
       clientId: process.env.ZITADEL_CLIENT_ID,
-      clientSecret: process.env.ZITADEL_CLIENT_SECRET || "unused",
+      clientSecret: process.env.ZITADEL_CLIENT_SECRET || "",
+      client: {
+        token_endpoint_auth_method: "none",
+      },
+      checks: ["pkce", "state"],
       authorization: {
         params: {
           scope: "openid profile email offline_access",
         },
       },
       async profile(profile) {
+        const preferred = profile.preferred_username as string | undefined;
+        const email =
+          profile.email ||
+          (preferred?.includes("@") ? preferred : undefined);
         return {
           id: profile.sub,
           name: profile.name,
-          email: profile.email,
+          email,
           image: profile.picture,
-          loginName: profile.preferred_username,
+          loginName: preferred,
         };
       },
     }),
@@ -42,19 +50,6 @@ providers.push(
       const email = (credentials?.email as string | undefined)?.toLowerCase().trim();
       const password = credentials?.password as string | undefined;
       if (!email || !password) return null;
-
-      if (process.env.AUTH_DEV_MODE === "true") {
-        const expectedEmail = (process.env.AUTH_DEV_EMAIL || "ada@mailslip.local").toLowerCase();
-        const expectedPassword = process.env.AUTH_DEV_PASSWORD || "mailslip";
-        if (email === expectedEmail && password === expectedPassword) {
-          return {
-            id: "dev-user",
-            name: "Ada Lovelace",
-            email: expectedEmail,
-            loginName: expectedEmail,
-          };
-        }
-      }
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (user?.passwordHash && (await verifyPassword(password, user.passwordHash))) {
@@ -77,11 +72,9 @@ async function ensureUser(params: {
   name?: string | null;
   image?: string | null;
   loginName?: string | null;
-  existingId?: string;
 }) {
-  if (params.existingId && params.existingId !== "dev-user") {
-    const existing = await prisma.user.findUnique({ where: { id: params.existingId } });
-    if (existing) return existing;
+  if (!params.email) {
+    throw new Error("Identity provider did not return an email address");
   }
 
   const existing = await prisma.user.findUnique({
@@ -136,6 +129,7 @@ async function ensureUser(params: {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   pages: {
     signIn: "/login",
   },
@@ -146,25 +140,49 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.mustChangePassword = false;
       }
       if (user) {
-        const zitadelId =
-          account?.provider === "zitadel"
-            ? (profile?.sub as string) || user.id!
-            : user.id!;
-        const email = user.email!;
-        try {
-          const dbUser = await ensureUser({
-            zitadelId,
-            email,
-            name: user.name,
-            image: user.image,
-            loginName: (user as { loginName?: string }).loginName,
-            existingId: user.id,
-          });
-          token.userId = dbUser.id;
-          token.mustChangePassword = dbUser.mustChangePassword;
-        } catch {
+        if (account?.provider === "credentials") {
           token.userId = user.id;
+          token.email = user.email?.toLowerCase();
+          return token;
         }
+
+        const zitadelId = (profile?.sub as string) || user.id!;
+        let email =
+          user.email?.toLowerCase() ||
+          (profile as { email?: string } | undefined)?.email?.toLowerCase() ||
+          "";
+
+        const preferred = (profile as { preferred_username?: string } | undefined)
+          ?.preferred_username;
+        if (!email && preferred?.includes("@")) {
+          email = preferred.toLowerCase();
+        }
+
+        if (!email && account?.access_token && process.env.ZITADEL_ISSUER) {
+          const userinfo = await fetch(
+            `${process.env.ZITADEL_ISSUER}/oidc/v1/userinfo`,
+            { headers: { Authorization: `Bearer ${account.access_token}` } },
+          );
+          if (userinfo.ok) {
+            const data = (await userinfo.json()) as { email?: string };
+            email = data.email?.toLowerCase() || email;
+          }
+        }
+
+        if (!email) {
+          throw new Error("Zitadel did not return an email for this account");
+        }
+
+        const dbUser = await ensureUser({
+          zitadelId,
+          email,
+          name: user.name,
+          image: user.image,
+          loginName: (user as { loginName?: string }).loginName,
+        });
+        token.userId = dbUser.id;
+        token.mustChangePassword = dbUser.mustChangePassword;
+        token.email = email;
       }
       return token;
     },
@@ -180,6 +198,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isPublic =
         path === "/" ||
         path.startsWith("/login") ||
+        path.startsWith("/register") ||
         path.startsWith("/api/auth") ||
         path.startsWith("/api/health");
       if (isPublic) return true;

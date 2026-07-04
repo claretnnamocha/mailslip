@@ -14,24 +14,6 @@ export async function POST() {
     return jsonError("No identity has a CardDAV URL configured", 400);
   }
 
-  if (process.env.DEMO_MAIL === "true") {
-    const demo = [
-      { name: "Folake Bello", email: "folake@studio.co" },
-      { name: "Tunde Adeyemi", email: "tunde@example.com" },
-    ];
-    for (const c of demo) {
-      const existing = await prisma.contact.findFirst({
-        where: { userId: authResult.userId, email: c.email },
-      });
-      if (existing) {
-        await prisma.contact.update({ where: { id: existing.id }, data: { name: c.name } });
-      } else {
-        await prisma.contact.create({ data: { userId: authResult.userId, ...c } });
-      }
-    }
-    return NextResponse.json({ synced: demo.length });
-  }
-
   const config = identityToConfig(withCardDav);
   if (!config) return jsonError("Credentials missing", 400);
 

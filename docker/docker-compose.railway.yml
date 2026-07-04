@@ -1,0 +1,46 @@
+# Prod-like Zitadel stack for local testing before Railway deploy.
+#
+#   cp docker/.env.railway.example docker/.env.railway
+#   # fill in ZITADEL_MASTERKEY + passwords
+#   docker compose -f docker/docker-compose.railway.yml up -d
+#
+# Console: http://localhost:8080/ui/console
+# Issuer:  http://localhost:8080  (local only — Railway uses HTTPS + custom domain)
+
+services:
+  zitadel-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zitadel
+      POSTGRES_PASSWORD: ${ZITADEL_POSTGRES_PASSWORD:-change-me-local}
+      POSTGRES_DB: zitadel
+    volumes:
+      - zitadel_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zitadel -d zitadel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  zitadel:
+    build:
+      context: ./zitadel
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode disabled
+    restart: unless-stopped
+    env_file:
+      - .env.railway
+    environment:
+      # Local overrides — Railway uses 443 + HTTPS instead
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: "8080"
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_DATABASE_POSTGRES_DSN: postgresql://zitadel:${ZITADEL_POSTGRES_PASSWORD:-change-me-local}@zitadel-postgres:5432/zitadel?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      zitadel-postgres:
+        condition: service_healthy
+
+volumes:
+  zitadel_pg:

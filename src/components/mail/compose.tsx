@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/dialog-provider";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, parseAddressList } from "@/lib/utils";
 import {
@@ -43,7 +44,9 @@ export function Compose() {
   const [sending, setSending] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const [encrypt, setEncrypt] = useState(false);
+  const [sign, setSign] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
+  const { confirm, prompt } = useDialog();
 
   const replyDefaults = useMemo(() => {
     if (!selectedMessage || composeMode === "new") return null;
@@ -109,6 +112,19 @@ export function Compose() {
       toast.error("Add at least one recipient");
       return;
     }
+    let passphrase: string | undefined;
+    if (encrypt && sign) {
+      const entered = await prompt({
+        title: "PGP passphrase",
+        description: "Enter the passphrase for your private key, if it has one.",
+        label: "Passphrase",
+        inputType: "password",
+        confirmLabel: "Encrypt & send",
+      });
+      if (entered === null) return;
+      passphrase = entered || undefined;
+    }
+
     setSending(true);
     try {
       const undoAt = new Date(Date.now() + 10_000).toISOString();
@@ -123,6 +139,8 @@ export function Compose() {
         inReplyTo: selectedMessage?.messageId,
         references: selectedMessage?.references,
         encrypt,
+        sign: encrypt && sign,
+        passphrase,
         scheduleAt: scheduleAt || undoAt,
       };
       const res = await fetch("/api/mail/send", {
@@ -162,9 +180,15 @@ export function Compose() {
     }
   }
 
-  function discard() {
+  async function discard() {
     if (to || subject || body) {
-      if (!confirm("Discard this draft?")) return;
+      const ok = await confirm({
+        title: "Discard draft?",
+        description: "This message has content that hasn’t been sent.",
+        confirmLabel: "Discard",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
     closeCompose();
   }
@@ -293,6 +317,12 @@ export function Compose() {
             <input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} />
             PGP encrypt
           </label>
+          {encrypt && (
+            <label className="flex items-center gap-1.5 text-[12px] text-text-2">
+              <input type="checkbox" checked={sign} onChange={(e) => setSign(e.target.checked)} />
+              Sign
+            </label>
+          )}
           <input
             type="datetime-local"
             value={scheduleAt ? scheduleAt.slice(0, 16) : ""}

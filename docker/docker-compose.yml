@@ -17,9 +17,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Zitadel identity provider (OIDC). Configure a Web app with CODE auth,
-  # redirect URI http://localhost:3000/api/auth/callback/zitadel, then set
-  # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET in the app .env.local.
+  # Zitadel identity provider (OIDC).
+  # After first boot, create a Web/CODE app in the console and set
+  # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET in the project .env, then
+  # restart the app service: npm run docker:up
   zitadel:
     image: ghcr.io/zitadel/zitadel:latest
     restart: unless-stopped
@@ -35,15 +36,43 @@ services:
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: mailslip
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       ZITADEL_EXTERNALSECURE: "false"
-      ZITADEL_EXTERNALPORT: 8080
+      ZITADEL_EXTERNALPORT: 9090
       ZITADEL_EXTERNALDOMAIN: localhost
+      # Use classic Login V1 (bundled). Login V2 is a separate app and returns
+      # {"code":5,"message":"Not Found"} if that UI container is not deployed.
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: zitadel-admin@mailslip.local
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: Password1!
     ports:
-      - "8080:8080"
+      - "9090:8080"
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Next.js Mailslip app (API + UI)
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../.env
+    environment:
+      # Override hostnames for in-network service discovery
+      DATABASE_URL: postgresql://mailslip:mailslip@postgres:5432/mailslip?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      # Issuer must stay as localhost so the browser can reach Zitadel;
+      # extra_hosts maps localhost inside this container to the host gateway.
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-http://localhost:9090}
+    extra_hosts:
+      - "localhost:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zitadel:
+        condition: service_started
 
 volumes:
   mailslip_pg:

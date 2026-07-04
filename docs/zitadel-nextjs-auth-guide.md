@@ -212,13 +212,15 @@ That is the whole handover. Your Next.js backend never stores a password or veri
 Quickest possible smoke test (do not use these flags in production):
 
 ```bash
-docker run --name zitadel -p 8080:8080 \
+docker run --name zitadel -p 9090:8080 \
   ghcr.io/zitadel/zitadel:latest start-from-init \
   --masterkey "MasterkeyNeedsToHave32Characters" \
   --tlsMode disabled
 ```
 
 For anything real you want Docker Compose with a dedicated Postgres, a persisted `masterkey`, TLS enabled, and a proper external domain (Zitadel needs to be reachable at a stable HTTPS domain for OIDC to work, since the issuer URL is baked into tokens). On your existing Railway / Kubernetes setup this slots in as: Zitadel container + managed Postgres + a domain like `auth.yourdomain.com`.
+
+**Railway:** step-by-step deploy for Mailslip is in [`zitadel-railway-guide.md`](./zitadel-railway-guide.md).
 
 Migration path if you ever tire of ops: the same image runs on Zitadel Cloud, so you can lift to managed later without changing your Next.js integration.
 

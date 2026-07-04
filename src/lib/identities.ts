@@ -18,7 +18,22 @@ export async function getPrimaryWorkspace(userId: string) {
     include: { workspace: true },
     orderBy: { createdAt: "asc" },
   });
-  return membership;
+  if (membership) return membership;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return null;
+
+  const workspace = await prisma.workspace.create({
+    data: {
+      name: `${user.name || user.email.split("@")[0]}'s workspace`,
+      members: { create: { userId: user.id, role: "OWNER" } },
+    },
+  });
+
+  return prisma.workspaceMember.findFirst({
+    where: { userId, workspaceId: workspace.id },
+    include: { workspace: true },
+  });
 }
 
 export function isAdminRole(role: WorkspaceRole) {

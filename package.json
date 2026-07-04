@@ -11,8 +11,11 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d --build",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
+    "docker:ps": "docker compose -f docker/docker-compose.yml ps",
+    "docker:restart": "docker compose -f docker/docker-compose.yml up -d --build --force-recreate app",
     "postinstall": "prisma generate"
   },
   "dependencies": {

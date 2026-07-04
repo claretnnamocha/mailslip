@@ -26,13 +26,6 @@ export async function POST(request: Request) {
   const dest = identityToConfig(access.identity);
   if (!dest?.imapHost) return jsonError("Destination identity has no IMAP host");
 
-  if (process.env.DEMO_MAIL === "true") {
-    return NextResponse.json({
-      copied: 12,
-      message: "Demo import complete. Source mail was not deleted.",
-    });
-  }
-
   try {
     const result = await importImapToImap({
       source: {

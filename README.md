@@ -13,90 +13,100 @@ Domain: `mailslip.woksol.space` · Sub-product of Linqr · MIT
 | Frontend UI | Next.js App Router (`src/app`, `src/components`) |
 | Backend APIs | Next.js Route Handlers (`src/app/api`) |
 | App data | PostgreSQL (Docker) |
-| Auth (OIDC) | Zitadel (Docker) + Auth.js |
-| Mail protocols | IMAP (`imapflow`), SMTP (`nodemailer`) — credentials encrypted at rest |
+| Auth | Email/password (Auth.js) and optional Zitadel OIDC |
+| Mail protocols | IMAP (`imapflow`), POP3, JMAP, SMTP (`nodemailer`) — credentials encrypted at rest |
 
 Everything product-facing lives in this Next.js app. Infrastructure outside the app is Docker only.
 
-## Quick start
+There is no demo or mock mail mode. Connecting an identity always tests and uses real servers.
 
-### 1. Start infrastructure
-
-```bash
-npm run docker:up
-# or just Postgres for local/dev auth:
-docker compose -f docker/docker-compose.yml up -d postgres
-```
-
-### 2. Configure env
+## Quick start (full stack in Docker)
 
 ```bash
 cp .env.example .env
-# defaults work for local demo mode
+# set NEXTAUTH_SECRET, AUTH_SECRET, ENCRYPTION_KEY (openssl rand -hex 32 each)
+
+npm run docker:up
 ```
 
-### 3. Database
+This builds and starts **Postgres**, **Zitadel**, and the **Next.js app** together.
+
+| Service | URL |
+| --- | --- |
+| Mailslip | http://localhost:3000 |
+| Zitadel Console | http://localhost:9090 |
 
 ```bash
-npm install
-npm run db:push
+npm run docker:logs    # follow logs
+npm run docker:ps      # status
+npm run docker:down    # stop all
+npm run docker:restart # rebuild/restart only the app
 ```
 
-### 4. Run the app
+Create an account at http://localhost:3000/register, then connect a real mailbox in onboarding.
+
+### Local Next.js (host) + Docker infra only
 
 ```bash
-npm run dev
+docker compose -f docker/docker-compose.yml up -d postgres zitadel
+npm install && npm run db:push && npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Zitadel client ID & secret (step by step)
 
-**Dev login** (when `AUTH_DEV_MODE=true`):
+You **cannot invent** these values. Zitadel creates them when you register the Mailslip application.
 
-- Email: `ada@mailslip.local`
-- Password: `mailslip`
-
-With `DEMO_MAIL=true`, onboarding accepts any mailbox credentials and the inbox shows sample messages so you can review the full UI without a real mail server.
-
-## Zitadel (production-style auth)
-
-1. `docker compose -f docker/docker-compose.yml up -d` (Postgres + Zitadel on `:8080`)
-2. Open Zitadel console, create a **Web** application with **CODE** auth
-3. Redirect URI: `http://localhost:3000/api/auth/callback/zitadel`
-4. Set in `.env`:
+1. Start the stack (`npm run docker:up`) and wait until Zitadel is up.
+2. Open **http://localhost:9090/ui/console** in your browser (not `/ui/v2/login`).
+3. Sign in with the first-instance admin (from compose):
+   - Username: `zitadel-admin@mailslip.local`
+   - Password: `Password1!`
+   - You will be forced to set a new password on first login — do that.
+4. In the console, open your default **Organization** / **Projects**.
+5. Open the default project (or create one named **Mailslip**).
+6. Click **New** → **Application**.
+7. Name it `mailslip`, application type **Web**, then continue.
+8. Authentication method: **Code** (Authorization Code + PKCE). Continue.
+9. **Redirect URIs** — add exactly:
+   - `http://localhost:3000/api/auth/callback/zitadel`
+10. **Post logout redirect URIs** — add:
+    - `http://localhost:3000`
+11. Enable **Development Mode** (allows http://localhost). Create / save.
+12. On the application detail page, copy:
+    - **Client ID**
+    - **Client Secret** (shown once — save it immediately)
+13. Put them in `.env`:
 
 ```bash
-ZITADEL_ISSUER=http://localhost:8080
-ZITADEL_CLIENT_ID=...
-ZITADEL_CLIENT_SECRET=...
-AUTH_DEV_MODE=false
+ZITADEL_ISSUER=http://localhost:9090
+ZITADEL_CLIENT_ID=<paste Client ID>
+ZITADEL_CLIENT_SECRET=<paste Client Secret>
 ```
 
-Login page offers **Continue with Zitadel**. See `docs/zitadel-nextjs-auth-guide.md`.
+14. Restart the app so it picks up the secrets:
 
-## Real mailboxes
+```bash
+npm run docker:restart
+```
 
-Set `DEMO_MAIL=false`, connect an identity in onboarding with real IMAP/SMTP hosts, ports, and an app password where required (Gmail/Outlook). Credentials are AES-256-GCM encrypted with `ENCRYPTION_KEY`.
+Login/register will then show **Continue with Zitadel**. Email/password works without these values.
+
+**More detail:**
+
+- Local / OIDC integration: [`docs/zitadel-nextjs-auth-guide.md`](docs/zitadel-nextjs-auth-guide.md)
+- Production on Railway (Docker): [`docs/zitadel-railway-guide.md`](docs/zitadel-railway-guide.md)
+
+## Mailboxes
+
+In onboarding, enter real IMAP/POP3/JMAP and SMTP hosts (or use Gmail/Outlook presets). Connection is tested before the identity is saved. Credentials are AES-256-GCM encrypted with `ENCRYPTION_KEY`.
 
 ## Product surfaces
 
-- Landing + login
+- Landing, register, login
 - Onboarding (individual mailbox / domain path)
 - Three-panel inbox (sidebar / list / reading pane)
-- Compose (reply / forward / undo-send toast)
-- Unified “All inboxes” with per-row destination tags
-- Scoped alias identities (server-side recipient filter)
-- Settings: profile, identities, signatures, filters, team provisioning, domains, appearance, vacation, folders, PGP keys, spam, import, storage, danger zone
-- Contacts
-
-## Docs & design
-
-| Path | Contents |
-| --- | --- |
-| `docs/Mailslip-PRD.md` | Product requirements |
-| `docs/design/` | Design canvas + design system HTML |
-| `docs/zitadel-nextjs-auth-guide.md` | Auth integration guide |
-| `public/logo-512.png` | Logo mark |
-| `public/og.png` | Open Graph image |
+- Compose (reply / forward / undo-send / schedule / PGP)
+- Settings, team provisioning, domains, contacts, import
 
 ## Scripts
 

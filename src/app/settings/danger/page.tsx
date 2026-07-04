@@ -2,19 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/dialog-provider";
 import { toast } from "sonner";
 
 export default function DangerSettingsPage() {
   const router = useRouter();
+  const { confirm } = useDialog();
 
   async function deleteAccount() {
-    if (
-      !confirm(
-        "Delete your Mailslip account? Mail on your own servers is never touched — only your Mailslip profile and connection settings are removed.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete your Mailslip account?",
+      description:
+        "Only your Mailslip profile and connection settings are removed. Mail on your own servers is never touched.",
+      confirmLabel: "Delete account",
+      tone: "danger",
+    });
+    if (!ok) return;
     const res = await fetch("/api/settings/danger", { method: "DELETE" });
     if (!res.ok) {
       toast.error("Could not delete account");

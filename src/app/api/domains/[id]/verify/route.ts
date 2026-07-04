@@ -28,7 +28,6 @@ export async function POST(
     const flat = records.map((parts) => parts.join(""));
     verified = flat.some((r) => r.includes(domain.verificationToken));
   } catch {
-    // Also accept root TXT for local/dev convenience
     try {
       const records = await dns.resolveTxt(domain.domain);
       const flat = records.map((parts) => parts.join(""));
@@ -36,11 +35,6 @@ export async function POST(
     } catch {
       verified = false;
     }
-  }
-
-  // Dev convenience: allow verify when DEMO_MAIL is on
-  if (!verified && process.env.DEMO_MAIL === "true") {
-    verified = true;
   }
 
   const updated = await prisma.domain.update({
