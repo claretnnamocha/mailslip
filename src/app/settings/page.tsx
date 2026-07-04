@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { toast } from "sonner";
 
 export default function ProfileSettingsPage() {
@@ -47,9 +48,12 @@ export default function ProfileSettingsPage() {
           value={session?.user?.email || ""}
           disabled
         />
-        <Button onClick={save} disabled={saving} size="sm">
-          {saving ? "Saving…" : "Save changes"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={save} disabled={saving} size="sm">
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+          <SignOutButton />
+        </div>
       </div>
     </div>
   );

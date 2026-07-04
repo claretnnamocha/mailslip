@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, initials } from "@/lib/utils";
 import {
@@ -147,16 +148,14 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
         </Link>
         <Link
           href="/settings"
-          className="mb-2 flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] text-text-2 hover:bg-hover"
+          className="mb-1 flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] text-text-2 hover:bg-hover"
         >
           <SettingsIcon size={16} />
           Settings
         </Link>
-        <button
-          onClick={() => signOut({ callbackUrl: "/" })}
-          className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left"
-        >
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
+        <SignOutButton variant="sidebar" />
+        <div className="mt-2 flex items-center gap-2.5 rounded-[10px] px-3 py-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
             {initials(session?.user?.name, session?.user?.email)}
           </span>
           <span className="min-w-0 flex-1">
@@ -167,7 +166,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
               {session?.user?.email}
             </span>
           </span>
-        </button>
+        </div>
       </div>
     </aside>
   );
