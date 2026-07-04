@@ -17,7 +17,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("dev", {
+    const res = await signIn("credentials", {
       email,
       password,
       callbackUrl: "/mail",

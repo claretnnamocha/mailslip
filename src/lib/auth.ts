@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
+import { verifyPassword } from "@/lib/password";
 
 const providers = [];
 
@@ -29,19 +30,21 @@ if (process.env.ZITADEL_CLIENT_ID && process.env.ZITADEL_ISSUER) {
   );
 }
 
-if (process.env.AUTH_DEV_MODE === "true") {
-  providers.push(
-    Credentials({
-      id: "dev",
-      name: "Development",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = credentials?.email as string | undefined;
-        const password = credentials?.password as string | undefined;
-        const expectedEmail = process.env.AUTH_DEV_EMAIL || "ada@mailslip.local";
+providers.push(
+  Credentials({
+    id: "credentials",
+    name: "Email and password",
+    credentials: {
+      email: { label: "Email", type: "email" },
+      password: { label: "Password", type: "password" },
+    },
+    async authorize(credentials) {
+      const email = (credentials?.email as string | undefined)?.toLowerCase().trim();
+      const password = credentials?.password as string | undefined;
+      if (!email || !password) return null;
+
+      if (process.env.AUTH_DEV_MODE === "true") {
+        const expectedEmail = (process.env.AUTH_DEV_EMAIL || "ada@mailslip.local").toLowerCase();
         const expectedPassword = process.env.AUTH_DEV_PASSWORD || "mailslip";
         if (email === expectedEmail && password === expectedPassword) {
           return {
@@ -51,11 +54,22 @@ if (process.env.AUTH_DEV_MODE === "true") {
             loginName: expectedEmail,
           };
         }
-        return null;
-      },
-    }),
-  );
-}
+      }
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (user?.passwordHash && (await verifyPassword(password, user.passwordHash))) {
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          loginName: user.loginName || user.email,
+        };
+      }
+
+      return null;
+    },
+  }),
+);
 
 async function ensureUser(params: {
   zitadelId: string;
@@ -63,7 +77,13 @@ async function ensureUser(params: {
   name?: string | null;
   image?: string | null;
   loginName?: string | null;
+  existingId?: string;
 }) {
+  if (params.existingId && params.existingId !== "dev-user") {
+    const existing = await prisma.user.findUnique({ where: { id: params.existingId } });
+    if (existing) return existing;
+  }
+
   const existing = await prisma.user.findUnique({
     where: { zitadelId: params.zitadelId },
   });
@@ -102,7 +122,7 @@ async function ensureUser(params: {
     },
   });
 
-  const workspace = await prisma.workspace.create({
+  await prisma.workspace.create({
     data: {
       name: `${params.name || params.email.split("@")[0]}'s workspace`,
       members: {
@@ -111,7 +131,6 @@ async function ensureUser(params: {
     },
   });
 
-  void workspace;
   return user;
 }
 
@@ -122,7 +141,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user, account, profile, trigger, session }) {
+      if (trigger === "update" && session?.mustChangePassword === false) {
+        token.mustChangePassword = false;
+      }
       if (user) {
         const zitadelId =
           account?.provider === "zitadel"
@@ -136,6 +158,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: user.name,
             image: user.image,
             loginName: (user as { loginName?: string }).loginName,
+            existingId: user.id,
           });
           token.userId = dbUser.id;
           token.mustChangePassword = dbUser.mustChangePassword;
@@ -160,7 +183,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         path.startsWith("/api/auth") ||
         path.startsWith("/api/health");
       if (isPublic) return true;
-      return !!session?.user;
+      if (!session?.user) return false;
+      if (
+        session.user.mustChangePassword &&
+        !path.startsWith("/change-password") &&
+        !path.startsWith("/api/settings/password")
+      ) {
+        return Response.redirect(new URL("/change-password", request.nextUrl));
+      }
+      return true;
     },
   },
   trustHost: true,

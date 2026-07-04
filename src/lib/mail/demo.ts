@@ -5,6 +5,7 @@ const now = Date.now();
 const demoMessages: MailMessage[] = [
   {
     uid: 101,
+    remoteId: "101",
     id: "demo-101",
     identityId: "demo",
     identityEmail: "ada@aurelia.studio",
@@ -28,6 +29,7 @@ const demoMessages: MailMessage[] = [
   },
   {
     uid: 102,
+    remoteId: "102",
     id: "demo-102",
     identityId: "demo",
     identityEmail: "ada@aurelia.studio",
@@ -51,6 +53,7 @@ const demoMessages: MailMessage[] = [
   },
   {
     uid: 103,
+    remoteId: "103",
     id: "demo-103",
     identityId: "demo",
     identityEmail: "hello@aurelia.studio",
@@ -76,6 +79,7 @@ const demoMessages: MailMessage[] = [
   },
   {
     uid: 104,
+    remoteId: "104",
     id: "demo-104",
     identityId: "demo",
     identityEmail: "support@aurelia.studio",
@@ -113,7 +117,10 @@ export const demoFolders: MailFolder[] = [
 export function listDemoMessages(folder = "INBOX"): MailMessageSummary[] {
   return demoMessages
     .filter((m) => m.folder === folder)
-    .map(({ html: _h, text: _t, attachments: _a, headers: _hdr, cc: _c, bcc: _b, ...summary }) => summary);
+    .map(({ html: _h, text: _t, attachments: _a, headers: _hdr, cc: _c, bcc: _b, ...summary }) => ({
+      ...summary,
+      remoteId: String(summary.uid),
+    }));
 }
 
 export function getDemoMessage(uid: number): MailMessage | null {
@@ -130,5 +137,8 @@ export function searchDemoMessages(query: string): MailMessageSummary[] {
         m.from.name?.toLowerCase().includes(q) ||
         m.from.address.toLowerCase().includes(q),
     )
-    .map(({ html: _h, text: _t, attachments: _a, headers: _hdr, cc: _c, bcc: _b, ...summary }) => summary);
+    .map(({ html: _h, text: _t, attachments: _a, headers: _hdr, cc: _c, bcc: _b, ...summary }) => ({
+      ...summary,
+      remoteId: String(summary.uid),
+    }));
 }

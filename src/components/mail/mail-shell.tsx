@@ -2,27 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { MessageList } from "./message-list";
 import { MessageView } from "./message-view";
 import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
-import { MenuIcon, PlusIcon } from "./icons";
+import { MenuIcon, PlusIcon, SearchIcon } from "./icons";
 import { Button } from "@/components/ui/button";
 
 export function MailShell() {
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "message">("list");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const {
     identities,
     setIdentities,
     activeIdentityId,
     folder,
+    setFolder,
     setMessages,
     setLoadingList,
+    messages,
     selectedId,
+    setSelectedId,
     openCompose,
+    selectedMessage,
   } = useMailStore();
 
   useEffect(() => {
@@ -45,6 +52,7 @@ export function MailShell() {
       try {
         const params = new URLSearchParams({ folder });
         if (activeIdentityId !== "all") params.set("identityId", activeIdentityId);
+        if (query.trim()) params.set("q", query.trim());
         const res = await fetch(`/api/mail/messages?${params}`);
         if (!res.ok) throw new Error("Failed");
         const data = await res.json();
@@ -58,11 +66,118 @@ export function MailShell() {
     return () => {
       cancelled = true;
     };
-  }, [identities, activeIdentityId, folder, setLoadingList, setMessages]);
+  }, [identities, activeIdentityId, folder, query, setLoadingList, setMessages]);
 
   useEffect(() => {
     if (selectedId) setMobileView("message");
   }, [selectedId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (typing) return;
+
+      if (e.key === "/" || (e.key === "f" && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (e.key === "c") {
+        e.preventDefault();
+        openCompose("new");
+        return;
+      }
+      if (e.key === "r" && selectedMessage) {
+        e.preventDefault();
+        openCompose("reply");
+        return;
+      }
+      if (e.key === "a" && selectedMessage) {
+        e.preventDefault();
+        openCompose("replyAll");
+        return;
+      }
+      if (e.key === "f" && selectedMessage) {
+        e.preventDefault();
+        openCompose("forward");
+        return;
+      }
+      if (e.key === "e" && selectedId) {
+        e.preventDefault();
+        const summary = messages.find((m) => m.id === selectedId);
+        if (!summary) return;
+        void fetch(`/api/mail/messages/${summary.uid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identityId: summary.identityId,
+            folder: summary.folder,
+            remoteId: summary.remoteId,
+            action: "move",
+            destination: "Archive",
+          }),
+        }).then(() => {
+          toast.success("Archived");
+          setMessages(messages.filter((m) => m.id !== selectedId));
+          setSelectedId(null);
+        });
+        return;
+      }
+      if (e.key === "#" && selectedId) {
+        e.preventDefault();
+        const summary = messages.find((m) => m.id === selectedId);
+        if (!summary) return;
+        void fetch(`/api/mail/messages/${summary.uid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identityId: summary.identityId,
+            folder: summary.folder,
+            remoteId: summary.remoteId,
+            action: "move",
+            destination: "Trash",
+          }),
+        }).then(() => {
+          toast.success("Moved to trash");
+          setMessages(messages.filter((m) => m.id !== selectedId));
+          setSelectedId(null);
+        });
+        return;
+      }
+      if (e.key === "j" || e.key === "k") {
+        e.preventDefault();
+        if (messages.length === 0) return;
+        const idx = messages.findIndex((m) => m.id === selectedId);
+        const next =
+          e.key === "j"
+            ? messages[Math.min(messages.length - 1, Math.max(0, idx) + 1)]
+            : messages[Math.max(0, (idx < 0 ? 1 : idx) - 1)];
+        if (next) setSelectedId(next.id);
+        return;
+      }
+      if (e.key === "?" ) {
+        toast.message("Shortcuts", {
+          description: "C compose · R reply · E archive · # trash · J/K move · / search",
+        });
+      }
+      if (e.key === "1") setFolder("INBOX");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    messages,
+    selectedId,
+    selectedMessage,
+    openCompose,
+    setFolder,
+    setMessages,
+    setSelectedId,
+  ]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-bg">
@@ -76,9 +191,9 @@ export function MailShell() {
       <Sidebar mobileOpen={mobileNav} onClose={() => setMobileNav(false)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <button
-            className="rounded-lg p-2 text-text-2 hover:bg-hover"
+            className="rounded-lg p-2 text-text-2 hover:bg-hover md:hidden"
             onClick={() => {
               if (mobileView === "message") setMobileView("list");
               else setMobileNav(true);
@@ -86,14 +201,37 @@ export function MailShell() {
           >
             <MenuIcon size={18} />
           </button>
-          <span className="text-[14px] font-semibold">Mailslip</span>
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[10px] border border-border-strong bg-surface px-3 py-2">
+            <SearchIcon size={16} className="shrink-0 text-text-3" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              placeholder="Search mail"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3"
+            />
+            {query && (
+              <button
+                className="text-[12px] text-text-3 hover:text-text"
+                onClick={() => setQuery("")}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
           <div className={mobileView === "list" ? "flex w-full md:w-auto" : "hidden md:flex"}>
             <MessageList onSelect={() => setMobileView("message")} />
           </div>
-          <div className={mobileView === "message" ? "flex min-w-0 flex-1" : "hidden md:flex md:min-w-0 md:flex-1"}>
+          <div
+            className={
+              mobileView === "message"
+                ? "flex min-w-0 flex-1"
+                : "hidden md:flex md:min-w-0 md:flex-1"
+            }
+          >
             <MessageView />
           </div>
         </div>
@@ -120,6 +258,12 @@ export function MailShell() {
               Get started
             </Button>
           </div>
+        </div>
+      )}
+
+      {searchOpen && !query && (
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-surface px-4 py-2 text-[12px] text-text-3 shadow-[var(--shadow)]">
+          Press <span className="mono">?</span> for shortcuts
         </div>
       )}
 

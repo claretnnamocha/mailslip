@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { getPrimaryWorkspace, isAdminRole } from "@/lib/identities";
+import { hashPassword } from "@/lib/password";
 
 export async function GET() {
   const authResult = await requireUser();
@@ -46,10 +47,11 @@ export async function POST(request: Request) {
 
   const user = await prisma.user.create({
     data: {
-      zitadelId: `provisioned:${body.email}`,
-      email: body.email,
+      zitadelId: `provisioned:${body.email.toLowerCase()}`,
+      email: body.email.toLowerCase(),
       name: body.name,
-      loginName: body.email,
+      loginName: body.email.toLowerCase(),
+      passwordHash: await hashPassword(temporaryPassword),
       mustChangePassword: body.requirePasswordChange,
       memberships: {
         create: {

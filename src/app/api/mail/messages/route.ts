@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { requireUser, jsonError } from "@/lib/api";
 import { listAccessibleIdentities } from "@/lib/identities";
 import { fetchMessages } from "@/lib/mail/service";
+import { processDueScheduledSends } from "@/lib/mail/scheduled";
+import { prisma } from "@/lib/db";
 
 export async function GET(request: Request) {
   const authResult = await requireUser();
   if ("error" in authResult) return authResult.error;
+
+  await processDueScheduledSends(authResult.userId);
 
   const { searchParams } = new URL(request.url);
   const folder = searchParams.get("folder") || "INBOX";
@@ -35,6 +39,15 @@ export async function GET(request: Request) {
     }
   }
 
-  all.sort((a, b) => +new Date(b.date) - +new Date(a.date));
-  return NextResponse.json(all);
+  // Hide snoozed messages that are not yet due
+  const snoozed = await prisma.snoozedMessage.findMany({
+    where: { userId: authResult.userId, wakeAt: { gt: new Date() } },
+  });
+  const snoozedKeys = new Set(snoozed.map((s) => `${s.identityId}:${s.folder}:${s.uid}`));
+  const visible = all.filter(
+    (m) => !snoozedKeys.has(`${m.identityId}:${m.folder}:${m.uid}`),
+  );
+
+  visible.sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  return NextResponse.json(visible);
 }

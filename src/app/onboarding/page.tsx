@@ -9,27 +9,11 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
-
-const presets: Record<string, Partial<FormState>> = {
-  gmail: {
-    imapHost: "imap.gmail.com",
-    imapPort: "993",
-    smtpHost: "smtp.gmail.com",
-    smtpPort: "587",
-    authMode: "APP_PASSWORD",
-  },
-  outlook: {
-    imapHost: "outlook.office365.com",
-    imapPort: "993",
-    smtpHost: "smtp.office365.com",
-    smtpPort: "587",
-    authMode: "APP_PASSWORD",
-  },
-  custom: {},
-};
+type PresetId = "gmail" | "outlook" | "custom";
 
 type FormState = {
   connectType: "individual" | "domain";
+  preset: PresetId | null;
   email: string;
   displayName: string;
   incomingProtocol: "IMAP" | "POP3" | "JMAP";
@@ -38,14 +22,76 @@ type FormState = {
   password: string;
   imapHost: string;
   imapPort: string;
+  pop3Host: string;
+  pop3Port: string;
+  jmapUrl: string;
   smtpHost: string;
   smtpPort: string;
   cardDavUrl: string;
   calDavUrl: string;
 };
 
+const PRESETS: Record<
+  PresetId,
+  {
+    label: string;
+    hint: string;
+    values: Partial<FormState>;
+  }
+> = {
+  gmail: {
+    label: "Gmail",
+    hint: "imap.gmail.com · app password required",
+    values: {
+      preset: "gmail",
+      incomingProtocol: "IMAP",
+      authMode: "APP_PASSWORD",
+      imapHost: "imap.gmail.com",
+      imapPort: "993",
+      pop3Host: "pop.gmail.com",
+      pop3Port: "995",
+      smtpHost: "smtp.gmail.com",
+      smtpPort: "587",
+      jmapUrl: "",
+    },
+  },
+  outlook: {
+    label: "Outlook",
+    hint: "outlook.office365.com · app password or OAuth",
+    values: {
+      preset: "outlook",
+      incomingProtocol: "IMAP",
+      authMode: "APP_PASSWORD",
+      imapHost: "outlook.office365.com",
+      imapPort: "993",
+      pop3Host: "outlook.office365.com",
+      pop3Port: "995",
+      smtpHost: "smtp.office365.com",
+      smtpPort: "587",
+      jmapUrl: "",
+    },
+  },
+  custom: {
+    label: "Custom",
+    hint: "Your own IMAP, POP3, or JMAP server",
+    values: {
+      preset: "custom",
+      incomingProtocol: "IMAP",
+      authMode: "PASSWORD",
+      imapHost: "",
+      imapPort: "993",
+      pop3Host: "",
+      pop3Port: "995",
+      smtpHost: "",
+      smtpPort: "587",
+      jmapUrl: "",
+    },
+  },
+};
+
 const initial: FormState = {
   connectType: "individual",
+  preset: null,
   email: "",
   displayName: "",
   incomingProtocol: "IMAP",
@@ -54,6 +100,9 @@ const initial: FormState = {
   password: "",
   imapHost: "",
   imapPort: "993",
+  pop3Host: "",
+  pop3Port: "995",
+  jmapUrl: "",
   smtpHost: "",
   smtpPort: "587",
   cardDavUrl: "",
@@ -77,6 +126,18 @@ export default function OnboardingPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function applyPreset(id: PresetId) {
+    const preset = PRESETS[id];
+    setForm((f) => ({
+      ...f,
+      ...preset.values,
+      username: f.email || f.username,
+    }));
+    toast.success(`${preset.label} settings applied`, {
+      description: preset.hint,
+    });
+  }
+
   async function testAndCreate() {
     setTesting(true);
     setError("");
@@ -91,10 +152,13 @@ export default function OnboardingPage() {
           authMode: form.authMode,
           username: form.username || form.email,
           password: form.password,
-          imapHost: form.imapHost,
-          imapPort: Number(form.imapPort) || 993,
-          smtpHost: form.smtpHost,
-          smtpPort: Number(form.smtpPort) || 587,
+          imapHost: form.imapHost || undefined,
+          imapPort: Number(form.imapPort) || undefined,
+          pop3Host: form.pop3Host || form.imapHost || undefined,
+          pop3Port: Number(form.pop3Port) || undefined,
+          jmapUrl: form.jmapUrl || undefined,
+          smtpHost: form.smtpHost || undefined,
+          smtpPort: Number(form.smtpPort) || undefined,
           cardDavUrl: form.cardDavUrl || undefined,
           calDavUrl: form.calDavUrl || undefined,
           test: true,
@@ -111,6 +175,13 @@ export default function OnboardingPage() {
       setTesting(false);
     }
   }
+
+  const hostSummary =
+    form.incomingProtocol === "JMAP"
+      ? form.jmapUrl || "JMAP URL not set"
+      : form.incomingProtocol === "POP3"
+        ? `${form.pop3Host || "—"}:${form.pop3Port} · SMTP ${form.smtpHost || "—"}:${form.smtpPort}`
+        : `${form.imapHost || "—"}:${form.imapPort} · SMTP ${form.smtpHost || "—"}:${form.smtpPort}`;
 
   return (
     <div className="min-h-dvh bg-bg px-6 py-10 md:px-10">
@@ -137,8 +208,7 @@ export default function OnboardingPage() {
               Connect an account you own
             </h1>
             <p className="mt-3 max-w-[460px] text-[16px] leading-[1.55] text-text-2">
-              No migration, no new address. Point Mailslip at your existing mailbox and we&apos;ll
-              read and send through your own servers.
+              No migration, no new address. Point Mailslip at your existing mailbox.
             </p>
             <div className="mt-8 space-y-3.5">
               {(
@@ -192,7 +262,7 @@ export default function OnboardingPage() {
           <div>
             <h1 className="text-[30px] font-semibold tracking-[-0.02em]">Your address</h1>
             <p className="mt-3 text-[16px] text-text-2">
-              We&apos;ll use this as your identity label and default username.
+              Choose a provider preset to fill hosts and ports automatically.
             </p>
             <div className="mt-8 space-y-4">
               <Input
@@ -200,8 +270,12 @@ export default function OnboardingPage() {
                 mono
                 value={form.email}
                 onChange={(e) => {
-                  update("email", e.target.value);
-                  if (!form.username) update("username", e.target.value);
+                  const email = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    email,
+                    username: !f.username || f.username === f.email ? email : f.username,
+                  }));
                 }}
                 placeholder="ada@aurelia.studio"
               />
@@ -213,24 +287,48 @@ export default function OnboardingPage() {
               />
               <div>
                 <div className="mb-2 text-[13px] font-medium text-text-2">Quick presets</div>
-                <div className="flex flex-wrap gap-2">
-                  {(["gmail", "outlook", "custom"] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setForm((f) => ({ ...f, ...presets[p] }))}
-                      className="rounded-[9px] border border-border-strong bg-surface px-3 py-2 text-[13px] capitalize hover:bg-hover"
-                    >
-                      {p}
-                    </button>
-                  ))}
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {(Object.keys(PRESETS) as PresetId[]).map((id) => {
+                    const preset = PRESETS[id];
+                    const active = form.preset === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => applyPreset(id)}
+                        className={cn(
+                          "rounded-[11px] border px-3 py-3 text-left transition-colors",
+                          active
+                            ? "border-accent bg-accent-tint"
+                            : "border-border-strong bg-surface hover:bg-hover",
+                        )}
+                      >
+                        <div className="text-[13.5px] font-semibold">{preset.label}</div>
+                        <div className="mt-1 text-[11px] leading-snug text-text-3">
+                          {preset.hint}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+                {form.preset && (
+                  <div className="mt-3 rounded-[11px] border border-border bg-surface-2 px-3 py-2 text-[12px] text-text-2 mono">
+                    Applied: {hostSummary}
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-8 flex justify-between">
               <Button variant="ghost" onClick={() => setStep(1)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(3)} disabled={!form.email.includes("@")}>
+              <Button
+                onClick={() => {
+                  if (!form.preset) applyPreset("custom");
+                  setStep(3);
+                }}
+                disabled={!form.email.includes("@")}
+              >
                 Continue
               </Button>
             </div>
@@ -241,9 +339,26 @@ export default function OnboardingPage() {
           <div>
             <h1 className="text-[30px] font-semibold tracking-[-0.02em]">Incoming & auth</h1>
             <p className="mt-3 text-[16px] text-text-2">
-              Gmail and Outlook usually need an app password or OAuth — not your normal login.
+              Gmail and Outlook usually need an app password — not your normal login.
             </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(Object.keys(PRESETS) as PresetId[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => applyPreset(id)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[12px] font-medium capitalize",
+                    form.preset === id
+                      ? "border-accent bg-accent-tint text-text"
+                      : "border-border-strong text-text-2 hover:bg-hover",
+                  )}
+                >
+                  {id}
+                </button>
+              ))}
+            </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-[13px] font-medium text-text-2">Protocol</span>
                 <select
@@ -270,32 +385,69 @@ export default function OnboardingPage() {
                   <option value="OAUTH">OAuth 2.0</option>
                 </select>
               </label>
-              <Input
-                label="IMAP host"
-                mono
-                value={form.imapHost}
-                onChange={(e) => update("imapHost", e.target.value)}
-                placeholder="imap.aurelia.studio"
-              />
-              <Input
-                label="IMAP port"
-                mono
-                value={form.imapPort}
-                onChange={(e) => update("imapPort", e.target.value)}
-              />
-              <Input
-                label="SMTP host"
-                mono
-                value={form.smtpHost}
-                onChange={(e) => update("smtpHost", e.target.value)}
-                placeholder="smtp.aurelia.studio"
-              />
-              <Input
-                label="SMTP port"
-                mono
-                value={form.smtpPort}
-                onChange={(e) => update("smtpPort", e.target.value)}
-              />
+
+              {form.incomingProtocol === "JMAP" ? (
+                <div className="sm:col-span-2">
+                  <Input
+                    label="JMAP URL"
+                    mono
+                    value={form.jmapUrl}
+                    onChange={(e) => update("jmapUrl", e.target.value)}
+                    placeholder="https://api.fastmail.com/jmap/session"
+                  />
+                </div>
+              ) : form.incomingProtocol === "POP3" ? (
+                <>
+                  <Input
+                    label="POP3 host"
+                    mono
+                    value={form.pop3Host}
+                    onChange={(e) => update("pop3Host", e.target.value)}
+                    placeholder="pop.example.com"
+                  />
+                  <Input
+                    label="POP3 port"
+                    mono
+                    value={form.pop3Port}
+                    onChange={(e) => update("pop3Port", e.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <Input
+                    label="IMAP host"
+                    mono
+                    value={form.imapHost}
+                    onChange={(e) => update("imapHost", e.target.value)}
+                    placeholder="imap.aurelia.studio"
+                  />
+                  <Input
+                    label="IMAP port"
+                    mono
+                    value={form.imapPort}
+                    onChange={(e) => update("imapPort", e.target.value)}
+                  />
+                </>
+              )}
+
+              {form.incomingProtocol !== "JMAP" && (
+                <>
+                  <Input
+                    label="SMTP host"
+                    mono
+                    value={form.smtpHost}
+                    onChange={(e) => update("smtpHost", e.target.value)}
+                    placeholder="smtp.aurelia.studio"
+                  />
+                  <Input
+                    label="SMTP port"
+                    mono
+                    value={form.smtpPort}
+                    onChange={(e) => update("smtpPort", e.target.value)}
+                  />
+                </>
+              )}
+
               <Input
                 label="Username"
                 mono
@@ -311,15 +463,27 @@ export default function OnboardingPage() {
             </div>
             {form.authMode === "APP_PASSWORD" && (
               <p className="mt-4 rounded-[11px] border border-border bg-surface-2 px-4 py-3 text-[13px] text-text-2">
-                Tip: create an app password in your provider&apos;s security settings. Your normal
-                account password usually won&apos;t work with IMAP.
+                Create an app password in your provider&apos;s security settings. Your normal
+                account password usually won&apos;t work with IMAP/POP3.
               </p>
             )}
             <div className="mt-8 flex justify-between">
               <Button variant="ghost" onClick={() => setStep(2)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(4)}>Continue</Button>
+              <Button
+                onClick={() => setStep(4)}
+                disabled={
+                  !form.password ||
+                  (form.incomingProtocol === "JMAP"
+                    ? !form.jmapUrl
+                    : form.incomingProtocol === "POP3"
+                      ? !form.pop3Host || !form.smtpHost
+                      : !form.imapHost || !form.smtpHost)
+                }
+              >
+                Continue
+              </Button>
             </div>
           </div>
         )}
@@ -330,7 +494,7 @@ export default function OnboardingPage() {
               Contacts & calendar
             </h1>
             <p className="mt-3 text-[16px] text-text-2">
-              Optional. CardDAV for contacts; CalDAV is wired for a future calendar surface.
+              Optional. CardDAV for contacts; CalDAV is stored for a future calendar surface.
             </p>
             <div className="mt-8 space-y-4">
               <Input
@@ -371,8 +535,7 @@ export default function OnboardingPage() {
             <div className="mt-8 rounded-[14px] border border-border bg-surface p-5 text-[14px]">
               <div className="mono text-text-2">{form.email}</div>
               <div className="mt-2 text-text-3">
-                {form.incomingProtocol} · {form.imapHost}:{form.imapPort} · SMTP{" "}
-                {form.smtpHost}:{form.smtpPort}
+                {form.incomingProtocol} · {hostSummary}
               </div>
             </div>
             {error && <p className="mt-4 text-[13px] text-danger">{error}</p>}

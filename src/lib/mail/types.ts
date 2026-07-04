@@ -12,6 +12,8 @@ export type MailAttachmentMeta = {
 
 export type MailMessageSummary = {
   uid: number;
+  /** Protocol-native id (IMAP/POP3 uid or JMAP email id) */
+  remoteId: string;
   id: string;
   identityId: string;
   identityEmail?: string;

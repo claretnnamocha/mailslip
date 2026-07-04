@@ -45,7 +45,23 @@ export default function ContactsPage() {
         <form onSubmit={save} className="mt-8 grid gap-3 rounded-2xl border border-border bg-surface p-6 sm:grid-cols-2">
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input label="Email" mono value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <div className="sm:col-span-2"><Button size="sm" type="submit">Add contact</Button></div>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <Button size="sm" type="submit">Add contact</Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              const res = await fetch("/api/contacts/sync", { method: "POST" });
+              const data = await res.json();
+              if (!res.ok) return toast.error(data.error || "Sync failed");
+              toast.success(`Synced ${data.synced} contacts`);
+              load();
+            }}
+          >
+            Sync CardDAV
+          </Button>
+        </div>
         </form>
         <div className="mt-6 space-y-2">
           {contacts.map((c) => (

@@ -42,6 +42,8 @@ export function Compose() {
   const [plain, setPlain] = useState(false);
   const [sending, setSending] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [encrypt, setEncrypt] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
 
   const replyDefaults = useMemo(() => {
     if (!selectedMessage || composeMode === "new") return null;
@@ -109,32 +111,49 @@ export function Compose() {
     }
     setSending(true);
     try {
+      const undoAt = new Date(Date.now() + 10_000).toISOString();
+      const payload = {
+        identityId,
+        to: parseAddressList(to),
+        cc: parseAddressList(cc),
+        bcc: parseAddressList(bcc),
+        subject,
+        html: plain ? undefined : body.replace(/\n/g, "<br/>"),
+        text: body,
+        inReplyTo: selectedMessage?.messageId,
+        references: selectedMessage?.references,
+        encrypt,
+        scheduleAt: scheduleAt || undoAt,
+      };
       const res = await fetch("/api/mail/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identityId,
-          to: parseAddressList(to),
-          cc: parseAddressList(cc),
-          bcc: parseAddressList(bcc),
-          subject,
-          html: plain ? undefined : body.replace(/\n/g, "<br/>"),
-          text: body,
-          inReplyTo: selectedMessage?.messageId,
-          references: selectedMessage?.references,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Send failed");
       }
-      toast.success("Message sent", {
-        description: "Undo send available for a few seconds",
-        action: {
-          label: "Undo",
-          onClick: () => toast.message("Send cancelled"),
-        },
-      });
+      const data = await res.json();
+      if (data.scheduled && !scheduleAt) {
+        const scheduledId = data.id as string;
+        toast.success("Sending…", {
+          description: "Undo available for 10 seconds",
+          duration: 10_000,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              void fetch(`/api/mail/scheduled/${scheduledId}`, { method: "DELETE" }).then(() =>
+                toast.message("Send cancelled"),
+              );
+            },
+          },
+        });
+      } else if (data.scheduled) {
+        toast.success("Scheduled", { description: `Sends at ${new Date(data.sendAt).toLocaleString()}` });
+      } else {
+        toast.success("Message sent");
+      }
       closeCompose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Send failed");
@@ -265,13 +284,28 @@ export function Compose() {
         placeholder="Write your message…"
       />
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
         <Button size="sm" variant="ghost" onClick={discard}>
           Discard
         </Button>
-        <Button size="sm" onClick={send} disabled={sending}>
-          {sending ? "Sending…" : "Send"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[12px] text-text-2">
+            <input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} />
+            PGP encrypt
+          </label>
+          <input
+            type="datetime-local"
+            value={scheduleAt ? scheduleAt.slice(0, 16) : ""}
+            onChange={(e) =>
+              setScheduleAt(e.target.value ? new Date(e.target.value).toISOString() : "")
+            }
+            className="h-9 rounded-[9px] border border-border-strong bg-surface px-2 text-[12px]"
+            title="Schedule send"
+          />
+          <Button size="sm" onClick={send} disabled={sending}>
+            {sending ? "Sending…" : scheduleAt ? "Schedule" : "Send"}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -111,6 +111,7 @@ export async function listMessages(
         const subject = msg.envelope?.subject || "(no subject)";
         messages.push({
           uid: msg.uid,
+          remoteId: String(msg.uid),
           id: `${options.identityId}:${folder}:${msg.uid}`,
           identityId: options.identityId,
           identityEmail: options.identityEmail,
@@ -171,6 +172,7 @@ export async function getMessage(
 
       return {
         uid,
+        remoteId: String(uid),
         id: `${meta.identityId}:${folder}:${uid}`,
         identityId: meta.identityId,
         identityEmail: meta.identityEmail,
@@ -289,6 +291,7 @@ export async function searchMessages(
         const from = msg.envelope?.from?.[0];
         messages.push({
           uid: msg.uid,
+          remoteId: String(msg.uid),
           id: `${meta.identityId}:${folder}:${msg.uid}`,
           identityId: meta.identityId,
           identityEmail: meta.identityEmail,
@@ -324,8 +327,24 @@ export async function getQuota(config: ConnectionConfig) {
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    // QUOTA is optional; many servers don't advertise it
     const mailbox = await client.status("INBOX", { messages: true });
+    try {
+      // imapflow exposes getQuota when QUOTA capability is present
+      const quota = await (client as unknown as {
+        getQuota?: (path?: string) => Promise<{ storage?: { used?: number; limit?: number } } | false>;
+      }).getQuota?.();
+      if (quota && quota.storage && typeof quota.storage.limit === "number") {
+        return {
+          supported: true as const,
+          used: quota.storage.used ?? 0,
+          limit: quota.storage.limit,
+          messages: mailbox.messages ?? 0,
+          message: "Quota reported by server",
+        };
+      }
+    } catch {
+      /* capability missing */
+    }
     return {
       supported: false as const,
       messages: mailbox.messages ?? 0,

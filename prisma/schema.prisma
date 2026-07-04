@@ -54,6 +54,8 @@ model User {
   name              String?
   image             String?
   loginName         String?
+  /// scrypt hash for provisioned / local accounts (not used for Zitadel OIDC users)
+  passwordHash      String?
   mustChangePassword Boolean  @default(false)
   theme             ThemePreference @default(SYSTEM)
   density           Density   @default(COMFORTABLE)

@@ -41,8 +41,9 @@ export function MessageView() {
     (async () => {
       setLoadingMessage(true);
       try {
+        const remoteId = encodeURIComponent(summary.remoteId || String(summary.uid));
         const res = await fetch(
-          `/api/mail/messages/${summary.uid}?identityId=${summary.identityId}&folder=${encodeURIComponent(summary.folder)}`,
+          `/api/mail/messages/${summary.uid}?identityId=${summary.identityId}&folder=${encodeURIComponent(summary.folder)}&remoteId=${remoteId}`,
         );
         if (!res.ok) throw new Error("Failed to load message");
         const data = await res.json();
@@ -53,6 +54,7 @@ export function MessageView() {
           body: JSON.stringify({
             identityId: summary.identityId,
             folder: summary.folder,
+            remoteId: summary.remoteId || String(summary.uid),
             seen: true,
           }),
         });
@@ -109,6 +111,7 @@ export function MessageView() {
         body: JSON.stringify({
           identityId: summary.identityId,
           folder: summary.folder,
+          remoteId: summary.remoteId || String(summary.uid),
           flagged: !selectedMessage?.flagged,
         }),
       });
@@ -122,6 +125,7 @@ export function MessageView() {
       body: JSON.stringify({
         identityId: summary.identityId,
         folder: summary.folder,
+        remoteId: summary.remoteId || String(summary.uid),
         action: "move",
         destination,
       }),
@@ -154,7 +158,23 @@ export function MessageView() {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => toast.message("Snooze", { description: "Later today · Tomorrow · Weekend · Next week" })}
+          onClick={async () => {
+            const summary = messages.find((m) => m.id === selectedId);
+            if (!summary) return;
+            const wakeAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+            await fetch(`/api/mail/messages/${summary.uid}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                identityId: summary.identityId,
+                folder: summary.folder,
+                remoteId: summary.remoteId,
+                action: "snooze",
+                wakeAt,
+              }),
+            });
+            toast.success("Snoozed for 3 hours");
+          }}
         >
           <ClockIcon size={16} />
         </Button>
