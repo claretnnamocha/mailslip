@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-:root {
+/* Light tokens (default). System dark uses the media query so the first
+   paint is correct before any JS runs. Explicit .light / .dark override. */
+:root,
+:root.light {
+  color-scheme: light;
   --bg: #f7f6f3;
   --surface: #ffffff;
   --surface-2: #fbfaf8;
@@ -21,7 +25,31 @@
   --shadow: 0 1px 2px rgba(28, 27, 25, 0.04), 0 14px 40px rgba(28, 27, 25, 0.06);
 }
 
-.dark {
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+    --bg: #161514;
+    --surface: #1e1d1b;
+    --surface-2: #242220;
+    --text: #eceae5;
+    --text-2: #a39e96;
+    --text-3: #6f6a63;
+    --border: #2c2a27;
+    --border-strong: #3a3733;
+    --hover: #242220;
+    --accent: #cd9070;
+    --accent-press: #be7c5e;
+    --accent-tint: rgba(201, 138, 108, 0.18);
+    --danger: #d3756b;
+    --ok: #7e9a78;
+    --email-sheet: #fbfaf7;
+    --email-text: #1c1b19;
+    --email-body: #3a3936;
+  }
+}
+
+:root.dark {
+  color-scheme: dark;
   --bg: #161514;
   --surface: #1e1d1b;
   --surface-2: #242220;

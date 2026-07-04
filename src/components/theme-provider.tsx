@@ -1,15 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
+type Density = "comfortable" | "compact";
 
 type ThemeContextValue = {
   theme: Theme;
   resolved: "light" | "dark";
   setTheme: (theme: Theme) => void;
-  density: "comfortable" | "compact";
-  setDensity: (density: "comfortable" | "compact") => void;
+  density: Density;
+  setDensity: (density: Density) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -22,32 +23,59 @@ function resolveTheme(theme: Theme): "light" | "dark" {
   return theme;
 }
 
+function applyThemeClass(theme: Theme) {
+  const root = document.documentElement;
+  root.classList.remove("light", "dark");
+  if (theme === "light" || theme === "dark") {
+    root.classList.add(theme);
+  }
+  root.style.colorScheme = resolveTheme(theme);
+}
+
+function readStoredTheme(): Theme {
+  if (typeof window === "undefined") return "system";
+  const stored = localStorage.getItem("mailslip-theme");
+  if (stored === "light" || stored === "dark" || stored === "system") return stored;
+  return "system";
+}
+
+function readStoredDensity(): Density {
+  if (typeof window === "undefined") return "comfortable";
+  const stored = localStorage.getItem("mailslip-density");
+  if (stored === "comfortable" || stored === "compact") return stored;
+  return "comfortable";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("system");
-  const [density, setDensityState] = useState<"comfortable" | "compact">("comfortable");
+  const [density, setDensityState] = useState<Density>("comfortable");
   const [resolved, setResolved] = useState<"light" | "dark">("light");
 
-  useEffect(() => {
-    const storedTheme = localStorage.getItem("mailslip-theme") as Theme | null;
-    const storedDensity = localStorage.getItem("mailslip-density") as
-      | "comfortable"
-      | "compact"
-      | null;
-    if (storedTheme) setThemeState(storedTheme);
-    if (storedDensity) setDensityState(storedDensity);
+  // Sync from storage + DOM before paint so React never reverts the inline script.
+  useLayoutEffect(() => {
+    const nextTheme = readStoredTheme();
+    const nextDensity = readStoredDensity();
+    setThemeState(nextTheme);
+    setDensityState(nextDensity);
+    applyThemeClass(nextTheme);
+    setResolved(resolveTheme(nextTheme));
+    document.documentElement.dataset.density = nextDensity;
   }, []);
 
-  useEffect(() => {
-    const next = resolveTheme(theme);
-    setResolved(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+  useLayoutEffect(() => {
+    applyThemeClass(theme);
+    setResolved(resolveTheme(theme));
     document.documentElement.dataset.density = density;
   }, [theme, density]);
 
   useEffect(() => {
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => setResolved(mq.matches ? "dark" : "light");
+    const handler = () => {
+      const next = mq.matches ? "dark" : "light";
+      setResolved(next);
+      document.documentElement.style.colorScheme = next;
+    };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [theme]);
@@ -57,7 +85,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("mailslip-theme", value);
   };
 
-  const setDensity = (value: "comfortable" | "compact") => {
+  const setDensity = (value: Density) => {
     setDensityState(value);
     localStorage.setItem("mailslip-density", value);
   };
