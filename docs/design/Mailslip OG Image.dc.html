@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#33312c;font-family:'Geist',system-ui,sans-serif;}
+</style>
+</helmet>
+
+<div style="width:1200px;height:630px;position:relative;overflow:hidden;background:#F7F6F3;display:flex;flex-direction:column;">
+
+  <div style="position:absolute;top:0;right:0;width:520px;height:630px;background:#FFFFFF;border-left:1px solid #ECE8E1;display:flex;align-items:center;justify-content:center;">
+    <div style="width:392px;height:344px;background:#FFFFFF;border:1px solid #ECE8E1;border-radius:16px;box-shadow:0 30px 70px rgba(28,27,25,.16);overflow:hidden;display:flex;">
+      <div style="width:96px;background:#FBFAF8;border-right:1px solid #ECE8E1;padding:16px 12px;display:flex;flex-direction:column;gap:9px;">
+        <div style="width:22px;height:22px;border-radius:7px;background:#BE7C5E;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;line-height:1;">m</div>
+        <div style="height:8px;width:60px;border-radius:5px;background:#F4E9E2;margin-top:8px;"></div>
+        <div style="height:7px;width:52px;border-radius:5px;background:#ECE8E1;"></div>
+        <div style="height:7px;width:58px;border-radius:5px;background:#ECE8E1;"></div>
+        <div style="height:7px;width:46px;border-radius:5px;background:#ECE8E1;"></div>
+        <div style="margin-top:auto;display:flex;gap:6px;align-items:center;"><div style="width:6px;height:6px;border-radius:50%;background:#BE7C5E;"></div><div style="height:6px;width:44px;border-radius:4px;background:#ECE8E1;"></div></div>
+      </div>
+      <div style="width:130px;border-right:1px solid #ECE8E1;padding:8px 0;">
+        <div style="padding:12px 13px;border-left:2px solid #BE7C5E;background:#F4E9E2;display:flex;flex-direction:column;gap:6px;"><div style="height:8px;width:76px;border-radius:5px;background:#D8C7BC;"></div><div style="height:6px;width:100px;border-radius:4px;background:#E7DBD2;"></div></div>
+        <div style="padding:12px 13px;display:flex;flex-direction:column;gap:6px;"><div style="height:7px;width:64px;border-radius:4px;background:#E3DFD7;"></div><div style="height:6px;width:92px;border-radius:4px;background:#ECE8E1;"></div></div>
+        <div style="padding:12px 13px;display:flex;flex-direction:column;gap:6px;"><div style="height:7px;width:58px;border-radius:4px;background:#E3DFD7;"></div><div style="height:6px;width:86px;border-radius:4px;background:#ECE8E1;"></div></div>
+      </div>
+      <div style="flex:1;padding:16px 15px;display:flex;flex-direction:column;gap:8px;">
+        <div style="height:11px;width:120px;border-radius:5px;background:#E1DCD3;"></div>
+        <div style="height:7px;width:76px;border-radius:4px;background:#ECE8E1;margin-bottom:6px;"></div>
+        <div style="height:6px;width:98%;border-radius:4px;background:#F0ECE5;"></div>
+        <div style="height:6px;width:92%;border-radius:4px;background:#F0ECE5;"></div>
+        <div style="height:6px;width:96%;border-radius:4px;background:#F0ECE5;"></div>
+        <div style="height:6px;width:64%;border-radius:4px;background:#F0ECE5;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:relative;z-index:2;padding:72px 0 0 76px;max-width:640px;">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:44px;">
+      <div style="width:44px;height:44px;border-radius:12px;background:#BE7C5E;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:26px;line-height:1;">m</div>
+      <span style="font-size:27px;font-weight:600;letter-spacing:-.02em;color:#1C1B19;">Mail<span style="font-weight:400;">slip</span></span>
+    </div>
+    <div style="font:500 14px 'Geist Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#BE7C5E;margin-bottom:26px;">Bring your own server</div>
+    <h1 style="font-size:58px;line-height:1.05;font-weight:600;letter-spacing:-.03em;margin:0;color:#1C1B19;">Beautiful email,<br>without switching<br>providers.</h1>
+    <p style="font-size:20px;line-height:1.55;color:#6B675F;margin:28px 0 0;max-width:470px;">A calm, modern client for the email you already own. Your servers, your data, zero lock-in.</p>
+  </div>
+
+  <div style="position:absolute;bottom:0;left:0;right:0;height:56px;background:#1C1B19;display:flex;align-items:center;padding:0 76px;z-index:3;">
+    <span style="font:500 15px 'Geist Mono',monospace;color:#F7F6F3;letter-spacing:.01em;">mailslip.woksol.space</span>
+    <span style="margin-left:auto;font:400 14px 'Geist Mono',monospace;color:#9C968C;">IMAP · POP3 · JMAP · SMTP</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:630}}"></script>
+</body>
+</html>

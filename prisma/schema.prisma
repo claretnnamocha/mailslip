@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum IdentityType {
+  OWN_MAILBOX
+  SCOPED_ALIAS
+  DOMAIN_ADDRESS
+}
+
+enum IncomingProtocol {
+  IMAP
+  POP3
+  JMAP
+}
+
+enum AuthMode {
+  PASSWORD
+  APP_PASSWORD
+  OAUTH
+}
+
+enum GrantPermission {
+  SEND_AND_READ
+  READ_ONLY
+}
+
+enum Density {
+  COMFORTABLE
+  COMPACT
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+model User {
+  id                String    @id @default(cuid())
+  zitadelId         String    @unique
+  email             String    @unique
+  name              String?
+  image             String?
+  loginName         String?
+  mustChangePassword Boolean  @default(false)
+  theme             ThemePreference @default(SYSTEM)
+  density           Density   @default(COMFORTABLE)
+  keepEmailWhite    Boolean   @default(true)
+  undoSendSeconds   Int       @default(10)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  memberships       WorkspaceMember[]
+  identities        MailIdentity[]    @relation("IdentityOwner")
+  grants            IdentityGrant[]
+  signatures        Signature[]
+  templates         Template[]
+  pgpKeys           PgpKey[]
+  blockedSenders    BlockedSender[]
+  allowedSenders    AllowedSender[]
+  vacationRules     VacationRule[]
+  filters           FilterRule[]
+  contacts          Contact[]
+  drafts            Draft[]
+  scheduledSends    ScheduledSend[]
+  snoozedMessages   SnoozedMessage[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   WorkspaceMember[]
+  identities MailIdentity[]
+  domains   Domain[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model MailIdentity {
+  id               String           @id @default(cuid())
+  workspaceId      String
+  ownerUserId      String?
+  type             IdentityType     @default(OWN_MAILBOX)
+  email            String
+  displayName      String?
+  color            String           @default("#BE7C5E")
+  incomingProtocol IncomingProtocol @default(IMAP)
+  authMode         AuthMode         @default(PASSWORD)
+  imapHost         String?
+  imapPort         Int?
+  imapTls          Boolean          @default(true)
+  pop3Host         String?
+  pop3Port         Int?
+  pop3Tls          Boolean          @default(true)
+  jmapUrl          String?
+  smtpHost         String?
+  smtpPort         Int?
+  smtpTls          Boolean          @default(true)
+  username         String?
+  /// AES-GCM encrypted password / app password / oauth token blob
+  credentialsEnc   String?
+  cardDavUrl       String?
+  calDavUrl        String?
+  /// For SCOPED_ALIAS: backing mailbox identity id
+  backingIdentityId String?
+  /// Recipient filter address for scoped identities
+  recipientFilter  String?
+  matchHeader      String           @default("Delivered-To")
+  isCatchAll       Boolean          @default(false)
+  domainId         String?
+  connected        Boolean          @default(false)
+  lastSyncAt       DateTime?
+  spfOk            Boolean?
+  dkimOk           Boolean?
+  dmarcOk          Boolean?
+  mxOk             Boolean?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner            User?            @relation("IdentityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  backingIdentity  MailIdentity?    @relation("ScopedBacking", fields: [backingIdentityId], references: [id], onDelete: SetNull)
+  scopedChildren   MailIdentity[]   @relation("ScopedBacking")
+  domain           Domain?          @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  grants           IdentityGrant[]
+  signatures       Signature[]
+  notifications    NotificationPref[]
+  vacationRules    VacationRule[]
+  filters          FilterRule[]
+  drafts           Draft[]
+  scheduledSends   ScheduledSend[]
+  snoozedMessages  SnoozedMessage[]
+
+  @@index([workspaceId])
+  @@index([email])
+}
+
+model IdentityGrant {
+  id         String          @id @default(cuid())
+  identityId String
+  userId     String
+  permission GrantPermission @default(SEND_AND_READ)
+  createdAt  DateTime        @default(now())
+
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([identityId, userId])
+}
+
+model Domain {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  domain          String   @unique
+  verified        Boolean  @default(false)
+  verificationToken String
+  mailHost        String?
+  mailPort        Int?
+  mailTls         Boolean  @default(true)
+  adminUsername   String?
+  adminCredentialsEnc String?
+  perAddressAuth  Boolean  @default(false)
+  catchAllEnabled Boolean  @default(false)
+  cnameTarget     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  identities MailIdentity[]
+}
+
+model Signature {
+  id         String  @id @default(cuid())
+  userId     String
+  identityId String?
+  name       String
+  htmlBody   String
+  isDefault  Boolean @default(false)
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
+}
+
+model NotificationPref {
+  id         String  @id @default(cuid())
+  identityId String
+  desktop    Boolean @default(true)
+  sound        Boolean @default(false)
+  unreadBadge Boolean @default(true)
+
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  subject   String?
+  htmlBody  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PgpKey {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String
+  publicKey String
+  privateKeyEnc String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BlockedSender {
+  id     String @id @default(cuid())
+  userId String
+  value  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, value])
+}
+
+model AllowedSender {
+  id     String @id @default(cuid())
+  userId String
+  value  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, value])
+}
+
+model VacationRule {
+  id            String    @id @default(cuid())
+  userId        String
+  identityId    String
+  enabled       Boolean   @default(false)
+  subject       String?
+  body          String
+  startAt       DateTime?
+  endAt         DateTime?
+  contactsOnly  Boolean   @default(false)
+  rateLimitDays Int       @default(7)
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+}
+
+model FilterRule {
+  id         String  @id @default(cuid())
+  userId     String
+  identityId String
+  name       String
+  enabled    Boolean @default(true)
+  /// JSON: { field, operator, value }
+  conditions Json
+  /// JSON: { action, target? }
+  actions    Json
+  sieveScript String?
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  email     String
+  phone     String?
+  company   String?
+  groups    String[] @default([])
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, email])
+}
+
+model Draft {
+  id         String   @id @default(cuid())
+  userId     String
+  identityId String?
+  to         String[] @default([])
+  cc         String[] @default([])
+  bcc        String[] @default([])
+  subject    String?
+  htmlBody   String?
+  textBody   String?
+  scheduledAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
+}
+
+model ScheduledSend {
+  id         String   @id @default(cuid())
+  userId     String
+  identityId String
+  to         String[]
+  cc         String[] @default([])
+  bcc        String[] @default([])
+  subject    String
+  htmlBody   String?
+  textBody   String?
+  sendAt     DateTime
+  sent       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+}
+
+model SnoozedMessage {
+  id         String   @id @default(cuid())
+  userId     String
+  identityId String
+  uid        Int
+  folder     String
+  wakeAt     DateTime
+  createdAt  DateTime @default(now())
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+}

@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mailslip
 
-## Getting Started
+A calm, provider-agnostic webmail **client** — not an email host. Bring your own IMAP / POP3 / JMAP / SMTP credentials and manage mail in a modern interface.
 
-First, run the development server:
+> Beautiful email, without switching providers.
+
+Domain: `mailslip.woksol.space` · Sub-product of Linqr · MIT
+
+## Architecture
+
+| Layer | Where |
+| --- | --- |
+| Frontend UI | Next.js App Router (`src/app`, `src/components`) |
+| Backend APIs | Next.js Route Handlers (`src/app/api`) |
+| App data | PostgreSQL (Docker) |
+| Auth (OIDC) | Zitadel (Docker) + Auth.js |
+| Mail protocols | IMAP (`imapflow`), SMTP (`nodemailer`) — credentials encrypted at rest |
+
+Everything product-facing lives in this Next.js app. Infrastructure outside the app is Docker only.
+
+## Quick start
+
+### 1. Start infrastructure
+
+```bash
+npm run docker:up
+# or just Postgres for local/dev auth:
+docker compose -f docker/docker-compose.yml up -d postgres
+```
+
+### 2. Configure env
+
+```bash
+cp .env.example .env
+# defaults work for local demo mode
+```
+
+### 3. Database
+
+```bash
+npm install
+npm run db:push
+```
+
+### 4. Run the app
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Dev login** (when `AUTH_DEV_MODE=true`):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Email: `ada@mailslip.local`
+- Password: `mailslip`
 
-## Learn More
+With `DEMO_MAIL=true`, onboarding accepts any mailbox credentials and the inbox shows sample messages so you can review the full UI without a real mail server.
 
-To learn more about Next.js, take a look at the following resources:
+## Zitadel (production-style auth)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. `docker compose -f docker/docker-compose.yml up -d` (Postgres + Zitadel on `:8080`)
+2. Open Zitadel console, create a **Web** application with **CODE** auth
+3. Redirect URI: `http://localhost:3000/api/auth/callback/zitadel`
+4. Set in `.env`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+ZITADEL_ISSUER=http://localhost:8080
+ZITADEL_CLIENT_ID=...
+ZITADEL_CLIENT_SECRET=...
+AUTH_DEV_MODE=false
+```
 
-## Deploy on Vercel
+Login page offers **Continue with Zitadel**. See `docs/zitadel-nextjs-auth-guide.md`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Real mailboxes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `DEMO_MAIL=false`, connect an identity in onboarding with real IMAP/SMTP hosts, ports, and an app password where required (Gmail/Outlook). Credentials are AES-256-GCM encrypted with `ENCRYPTION_KEY`.
+
+## Product surfaces
+
+- Landing + login
+- Onboarding (individual mailbox / domain path)
+- Three-panel inbox (sidebar / list / reading pane)
+- Compose (reply / forward / undo-send toast)
+- Unified “All inboxes” with per-row destination tags
+- Scoped alias identities (server-side recipient filter)
+- Settings: profile, identities, signatures, filters, team provisioning, domains, appearance, vacation, folders, PGP keys, spam, import, storage, danger zone
+- Contacts
+
+## Docs & design
+
+| Path | Contents |
+| --- | --- |
+| `docs/Mailslip-PRD.md` | Product requirements |
+| `docs/design/` | Design canvas + design system HTML |
+| `docs/zitadel-nextjs-auth-guide.md` | Auth integration guide |
+| `public/logo-512.png` | Logo mark |
+| `public/og.png` | Open Graph image |
+
+## Scripts
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run docker:up` | Start Postgres + Zitadel |
+| `npm run db:push` | Sync Prisma schema |
+| `npm run db:studio` | Prisma Studio |
+
+## Security notes
+
+- Mailslip stores **connection settings**, not mail bodies (except optional drafts/scheduled metadata).
+- Disconnect / delete-account flows never touch mail on your servers.
+- Scoped identities are enforced server-side on message open.
+- Team provisioning hands temporary passwords out-of-band (admin model, not email invites).

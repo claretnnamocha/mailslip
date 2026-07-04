@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mailslip
+      POSTGRES_PASSWORD: mailslip
+      POSTGRES_DB: mailslip
+    ports:
+      - "5432:5432"
+    volumes:
+      - mailslip_pg:/var/lib/postgresql/data
+      - ./postgres/init-zitadel.sql:/docker-entrypoint-initdb.d/01-zitadel.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailslip -d mailslip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Zitadel identity provider (OIDC). Configure a Web app with CODE auth,
+  # redirect URI http://localhost:3000/api/auth/callback/zitadel, then set
+  # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET in the app .env.local.
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    restart: unless-stopped
+    command: start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: mailslip
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: mailslip
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: mailslip
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: mailslip
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALPORT: 8080
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: zitadel-admin@mailslip.local
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: Password1!
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  mailslip_pg:
