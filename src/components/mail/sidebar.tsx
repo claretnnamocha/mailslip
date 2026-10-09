@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, initials } from "@/lib/utils";
+import { folderRole, sortFolders } from "@/lib/mail/folder-map";
+import type { MailFolder } from "@/lib/mail/types";
 import {
   ArchiveIcon,
   EditIcon,
@@ -19,20 +21,40 @@ import {
   BanIcon,
 } from "./icons";
 
-const nav = [
-  { id: "INBOX", label: "Inbox", icon: InboxIcon },
-  { id: "Sent", label: "Sent", icon: SendIcon },
-  { id: "Drafts", label: "Drafts", icon: EditIcon },
-  { id: "Archive", label: "Archive", icon: ArchiveIcon },
-  { id: "Trash", label: "Trash", icon: TrashIcon },
-  { id: "Junk", label: "Spam", icon: BanIcon },
+const fallbackFolders: MailFolder[] = [
+  { path: "INBOX", name: "Inbox", delimiter: "/" },
+  { path: "Sent", name: "Sent", delimiter: "/" },
+  { path: "Drafts", name: "Drafts", delimiter: "/" },
+  { path: "Archive", name: "Archive", delimiter: "/" },
+  { path: "Junk", name: "Spam", delimiter: "/" },
+  { path: "Trash", name: "Trash", delimiter: "/" },
 ];
+
+function folderIcon(folder: MailFolder) {
+  switch (folderRole(folder)) {
+    case "inbox":
+      return InboxIcon;
+    case "sent":
+      return SendIcon;
+    case "drafts":
+      return EditIcon;
+    case "archive":
+      return ArchiveIcon;
+    case "junk":
+      return BanIcon;
+    case "trash":
+      return TrashIcon;
+    default:
+      return ArchiveIcon;
+  }
+}
 
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
   const { data: session } = useSession();
   const {
     folder,
     setFolder,
+    folders,
     identities,
     workspaceRole,
     activeIdentityId,
@@ -71,14 +93,18 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
 
       <nav className="flex-1 overflow-y-auto px-2">
         <div className="mb-4 space-y-0.5">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            const active = folder === item.id;
+          {sortFolders(folders.length > 0 ? folders : fallbackFolders).map((item) => {
+            const Icon = folderIcon(item);
+            const active = folder === item.path;
+            const depth = Math.min(
+              3,
+              Math.max(0, item.path.split(item.delimiter || "/").length - 1),
+            );
             return (
               <button
-                key={item.id}
+                key={item.path}
                 onClick={() => {
-                  setFolder(item.id);
+                  setFolder(item.path);
                   onClose?.();
                 }}
                 className={cn(
@@ -87,9 +113,11 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
                     ? "bg-accent-tint text-text border-l-2 border-accent pl-[10px]"
                     : "text-text-2 hover:bg-hover hover:text-text",
                 )}
+                style={depth ? { paddingLeft: 12 + depth * 10 } : undefined}
+                title={item.path}
               >
                 <Icon size={18} />
-                {item.label}
+                <span className="truncate">{item.name}</span>
               </button>
             );
           })}

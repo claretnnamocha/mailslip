@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { getPrimaryWorkspace, isAdminRole } from "@/lib/identities";
+import { assignedIdentityIds, getPrimaryWorkspace, isAdminRole, syncMemberIdentities } from "@/lib/identities";
 import { hashPassword } from "@/lib/password";
 
 export async function GET() {
@@ -19,7 +19,17 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({ members, role: membership.role });
+  const withIdentities = await Promise.all(
+    members.map(async (member) => ({
+      ...member,
+      identityIds:
+        member.role === "MEMBER"
+          ? await assignedIdentityIds(member.userId, membership.workspaceId)
+          : [],
+    })),
+  );
+
+  return NextResponse.json({ members: withIdentities, role: membership.role });
 }
 
 const schema = z.object({
@@ -63,20 +73,7 @@ export async function POST(request: Request) {
   });
 
   if (body.role === "MEMBER" && body.identityIds.length > 0) {
-    for (const identityId of body.identityIds) {
-      const identity = await prisma.mailIdentity.findFirst({
-        where: { id: identityId, workspaceId: membership.workspaceId },
-      });
-      if (!identity) continue;
-      if (identity.type === "OWN_MAILBOX" && identity.ownerUserId) continue;
-      await prisma.identityGrant.create({
-        data: {
-          identityId,
-          userId: user.id,
-          permission: "SEND_AND_READ",
-        },
-      });
-    }
+    await syncMemberIdentities(user.id, membership.workspaceId, body.identityIds);
   }
 
   // Temporary password is returned once for out-of-band handover.

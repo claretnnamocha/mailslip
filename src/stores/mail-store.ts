@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { MailMessage, MailMessageSummary } from "@/lib/mail/types";
+import type { MailFolder, MailMessage, MailMessageSummary } from "@/lib/mail/types";
 
 export type IdentitySummary = {
   id: string;
@@ -18,6 +18,7 @@ type MailState = {
   workspaceRole: string | null;
   activeIdentityId: string | "all";
   folder: string;
+  folders: MailFolder[];
   messages: MailMessageSummary[];
   selectedId: string | null;
   selectedMessage: MailMessage | null;
@@ -32,6 +33,7 @@ type MailState = {
   setWorkspaceRole: (role: string | null) => void;
   setActiveIdentityId: (id: string | "all") => void;
   setFolder: (folder: string) => void;
+  setFolders: (folders: MailFolder[]) => void;
   setMessages: (messages: MailMessageSummary[]) => void;
   setSelectedId: (id: string | null) => void;
   setSelectedMessage: (message: MailMessage | null) => void;
@@ -50,6 +52,7 @@ export const useMailStore = create<MailState>((set) => ({
   workspaceRole: null,
   activeIdentityId: "all",
   folder: "INBOX",
+  folders: [],
   messages: [],
   selectedId: null,
   selectedMessage: null,
@@ -64,6 +67,7 @@ export const useMailStore = create<MailState>((set) => ({
   setWorkspaceRole: (workspaceRole) => set({ workspaceRole }),
   setActiveIdentityId: (activeIdentityId) => set({ activeIdentityId }),
   setFolder: (folder) => set({ folder, selectedId: null, selectedMessage: null }),
+  setFolders: (folders) => set({ folders }),
   setMessages: (messages) => set({ messages }),
   setSelectedId: (selectedId) => set({ selectedId }),
   setSelectedMessage: (selectedMessage) => set({ selectedMessage }),

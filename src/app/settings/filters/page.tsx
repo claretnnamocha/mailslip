@@ -53,7 +53,7 @@ export default function FiltersPage() {
       <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
         <label className="block sm:col-span-2">
           <span className="mb-2 block text-[13px] font-medium text-text-2">Identity</span>
-          <select value={identityId} onChange={(e) => setIdentityId(e.target.value)} className="h-[46px] w-full rounded-[11px] border border-border-strong px-3">
+          <select value={identityId} onChange={(e) => setIdentityId(e.target.value)} className="h-[46px] w-full rounded-[11px] border border-border-strong bg-surface px-3">
             {identities.map((i) => <option key={i.id} value={i.id}>{i.email}</option>)}
           </select>
         </label>

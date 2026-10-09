@@ -142,6 +142,10 @@ export async function listPop3Messages(
       const raw = await client.retr(item.id);
       const parsed = await simpleParser(raw);
       const from = parsed.from?.value?.[0];
+      const headers: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed.headers || {})) {
+        headers[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
+      }
       messages.push({
         uid: item.id,
         remoteId: String(item.id),
@@ -157,6 +161,11 @@ export async function listPop3Messages(
           name: a.name || undefined,
           address: a.address || "",
         })),
+        cc: (parsed.cc && "value" in parsed.cc ? parsed.cc.value : []).map((a) => ({
+          name: a.name || undefined,
+          address: a.address || "",
+        })),
+        headers,
         date: (parsed.date || new Date()).toISOString(),
         seen: true,
         flagged: false,

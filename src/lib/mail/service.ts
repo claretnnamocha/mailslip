@@ -30,7 +30,7 @@ import {
   setJmapKeywords,
   testJmapConnection,
 } from "./jmap";
-import { messageMatchesScope } from "./scoped";
+import { messageMatchesScope, recipientScopeForIdentity, summaryMatchesRecipient } from "./scoped";
 import type { ConnectionConfig, MailMessageSummary, SendPayload } from "./types";
 
 function toConfig(identity: MailIdentity, password: string): ConnectionConfig {
@@ -94,6 +94,22 @@ export async function testIdentityConnection(
   return { incoming, outgoing };
 }
 
+function applyIdentityScope(
+  identity: MailIdentity,
+  folder: string,
+  messages: MailMessageSummary[],
+) {
+  const scope = recipientScopeForIdentity(identity);
+  if (!scope) return messages;
+  if (folder.toLowerCase().includes("sent")) {
+    const from = identity.email.toLowerCase();
+    return messages.filter((message) => message.from.address.toLowerCase() === from);
+  }
+  return messages.filter((message) =>
+    summaryMatchesRecipient(message, scope, identity.matchHeader),
+  );
+}
+
 function meta(identity: MailIdentity) {
   return {
     identityId: identity.id,
@@ -133,15 +149,7 @@ export async function fetchMessages(
     }));
   }
 
-  if (identity.type === "SCOPED_ALIAS" && identity.recipientFilter) {
-    if (folder.toLowerCase().includes("sent")) {
-      messages = messages.filter(
-        (msg) => msg.from.address.toLowerCase() === identity.email.toLowerCase(),
-      );
-    }
-  }
-
-  return messages;
+  return applyIdentityScope(identity, folder, messages);
 }
 
 export async function fetchMessage(
@@ -166,12 +174,13 @@ export async function fetchMessage(
   if (!msg) return null;
   const full = { ...msg, remoteId: key };
 
-  if (
-    identity.type === "SCOPED_ALIAS" &&
-    identity.recipientFilter &&
-    !messageMatchesScope(full, identity.recipientFilter, identity.matchHeader)
-  ) {
-    return null;
+  const scope = recipientScopeForIdentity(identity);
+  if (scope) {
+    const sent = folder.toLowerCase().includes("sent");
+    const visible = sent
+      ? full.from.address.toLowerCase() === identity.email.toLowerCase()
+      : messageMatchesScope(full, scope, identity.matchHeader);
+    if (!visible) return null;
   }
 
   return full;
@@ -272,10 +281,11 @@ export async function searchIdentityMail(identity: MailIdentity, query: string, 
   if (!config) throw new Error("Identity credentials missing");
 
   if (backing.incomingProtocol === "IMAP") {
-    return (await searchMessages(config, folder, query, meta(identity))).map((m) => ({
+    const found = (await searchMessages(config, folder, query, meta(identity))).map((m) => ({
       ...m,
       remoteId: String(m.uid),
     }));
+    return applyIdentityScope(identity, folder, found);
   }
 
   const all = await fetchMessages(identity, folder);

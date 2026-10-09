@@ -23,6 +23,9 @@ export type MailMessageSummary = {
   snippet: string;
   from: MailAddress;
   to: MailAddress[];
+  cc?: MailAddress[];
+  /** Envelope routing headers used to separate aliases that share one login. */
+  headers?: Record<string, string>;
   date: string;
   seen: boolean;
   flagged: boolean;
@@ -47,6 +50,7 @@ export type MailFolder = {
   name: string;
   delimiter: string;
   specialUse?: string;
+  selectable?: boolean;
   unseen?: number;
   total?: number;
 };

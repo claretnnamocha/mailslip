@@ -155,6 +155,7 @@ export async function listJmapMessages(
           "subject",
           "from",
           "to",
+          "cc",
           "receivedAt",
           "preview",
           "hasAttachment",
@@ -181,6 +182,10 @@ export async function listJmapMessages(
       snippet: String(email.preview || ""),
       from: { name: from?.name, address: from?.email || "unknown" },
       to: ((email.to as { name?: string; email?: string }[]) || []).map((t) => ({
+        name: t.name,
+        address: t.email || "",
+      })),
+      cc: ((email.cc as { name?: string; email?: string }[]) || []).map((t) => ({
         name: t.name,
         address: t.email || "",
       })),

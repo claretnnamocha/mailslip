@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
@@ -8,6 +8,8 @@ import { MessageList } from "./message-list";
 import { MessageView } from "./message-view";
 import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
+import { resolveFolderPath } from "@/lib/mail/folder-map";
+import type { MailFolder } from "@/lib/mail/types";
 import { MenuIcon, PlusIcon, SearchIcon } from "./icons";
 
 export function MailShell() {
@@ -24,6 +26,7 @@ export function MailShell() {
     activeIdentityId,
     folder,
     setFolder,
+    setFolders,
     setMessages,
     setLoadingList,
     messages,
@@ -32,6 +35,8 @@ export function MailShell() {
     openCompose,
     selectedMessage,
   } = useMailStore();
+  const folderRef = useRef(folder);
+  folderRef.current = folder;
 
   useEffect(() => {
     (async () => {
@@ -51,6 +56,40 @@ export function MailShell() {
       }
     })();
   }, [router, setIdentities, setWorkspaceRole]);
+
+  useEffect(() => {
+    if (identities.length === 0) return;
+    const targets =
+      activeIdentityId === "all"
+        ? identities
+        : identities.filter((identity) => identity.id === activeIdentityId);
+    let cancelled = false;
+    (async () => {
+      const lists = await Promise.all(
+        targets.map(async (identity) => {
+          const res = await fetch(`/api/mail/folders?identityId=${identity.id}`);
+          if (!res.ok) return [] as MailFolder[];
+          return (await res.json()) as MailFolder[];
+        }),
+      );
+      if (cancelled) return;
+      const byPath = new Map<string, MailFolder>();
+      for (const list of lists) {
+        for (const item of list) {
+          if (item.selectable === false) continue;
+          if (!byPath.has(item.path)) byPath.set(item.path, item);
+        }
+      }
+      const next = [...byPath.values()];
+      setFolders(next);
+      const current = folderRef.current;
+      const resolved = resolveFolderPath(current, next);
+      if (resolved !== current) setFolder(resolved);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [identities, activeIdentityId, setFolder, setFolders]);
 
   useEffect(() => {
     if (identities.length === 0) return;

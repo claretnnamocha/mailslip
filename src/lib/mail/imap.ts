@@ -7,6 +7,7 @@ import type {
   MailMessageSummary,
   MailAddress,
 } from "./types";
+import { resolveFolderPath } from "./folder-map";
 
 function clientFromConfig(config: ConnectionConfig) {
   return new ImapFlow({
@@ -25,6 +26,33 @@ function toAddress(input?: { name?: string | null; address?: string | null } | n
   if (!input?.address) return null;
   return { name: input.name || undefined, address: input.address };
 }
+
+function envelopeAddresses(
+  list?: { name?: string; address?: string }[] | null,
+): MailAddress[] {
+  return (list || [])
+    .map((address) => ({
+      name: address.name || undefined,
+      address: address.address || "",
+    }))
+    .filter((address) => address.address);
+}
+
+function routingHeaders(raw?: Buffer | null): Record<string, string> {
+  if (!raw?.length) return {};
+  const headers: Record<string, string> = {};
+  for (const line of raw.toString("utf8").split(/\r?\n/)) {
+    const split = line.indexOf(":");
+    if (split <= 0) continue;
+    const key = line.slice(0, split).trim().toLowerCase();
+    const value = line.slice(split + 1).trim();
+    if (!key || !value) continue;
+    headers[key] = headers[key] ? `${headers[key]}, ${value}` : value;
+  }
+  return headers;
+}
+
+const ROUTING_HEADER_FIELDS = ["delivered-to", "x-original-to", "envelope-to", "x-envelope-to"];
 
 function toAddressList(
   input?:
@@ -64,21 +92,51 @@ export async function testImapConnection(config: ConnectionConfig) {
   }
 }
 
+function boxToFolder(box: {
+  path: string;
+  name: string;
+  delimiter?: string;
+  specialUse?: string | false | null;
+  flags?: Set<string>;
+}): MailFolder {
+  const flags = box.flags;
+  const blocked = Boolean(flags?.has("\\Noselect") || flags?.has("\\NonExistent"));
+  return {
+    path: box.path,
+    name: box.name,
+    delimiter: box.delimiter || "/",
+    specialUse: box.specialUse || undefined,
+    selectable: !blocked,
+  };
+}
+
+function missingMailbox(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /does not exist|doesn't exist|nonexistent|no such mailbox|unknown mailbox|not found/i.test(
+    message,
+  );
+}
+
+async function lockMailbox(client: ImapFlow, folder: string) {
+  try {
+    const lock = await client.getMailboxLock(folder);
+    return { lock, path: folder };
+  } catch (error) {
+    if (!missingMailbox(error)) throw error;
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    const path = resolveFolderPath(folder, folders);
+    if (path === folder) throw error;
+    const lock = await client.getMailboxLock(path);
+    return { lock, path };
+  }
+}
+
 export async function listFolders(config: ConnectionConfig): Promise<MailFolder[]> {
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const folders: MailFolder[] = [];
     const list = await client.list();
-    for (const box of list) {
-      folders.push({
-        path: box.path,
-        name: box.name,
-        delimiter: box.delimiter || "/",
-        specialUse: box.specialUse || undefined,
-      });
-    }
-    return folders;
+    return list.map((box) => boxToFolder(box));
   } finally {
     await client.logout();
   }
@@ -94,7 +152,7 @@ export async function listMessages(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const lock = await client.getMailboxLock(folder);
+    const { lock, path } = await lockMailbox(client, folder);
     try {
       const limit = options.limit ?? 50;
       const exists = (client.mailbox as { exists?: number } | null)?.exists ?? 0;
@@ -106,27 +164,27 @@ export async function listMessages(
         flags: true,
         envelope: true,
         bodyStructure: true,
+        headers: ROUTING_HEADER_FIELDS,
       })) {
         const from = msg.envelope?.from?.[0];
         const subject = msg.envelope?.subject || "(no subject)";
         messages.push({
           uid: msg.uid,
           remoteId: String(msg.uid),
-          id: `${options.identityId}:${folder}:${msg.uid}`,
+          id: `${options.identityId}:${path}:${msg.uid}`,
           identityId: options.identityId,
           identityEmail: options.identityEmail,
           identityColor: options.identityColor,
-          folder,
+          folder: path,
           subject,
           snippet: subject,
           from: {
             name: from?.name || undefined,
             address: from?.address || "unknown",
           },
-          to: (msg.envelope?.to || []).map((a) => ({
-            name: a.name || undefined,
-            address: a.address || "",
-          })),
+          to: envelopeAddresses(msg.envelope?.to),
+          cc: envelopeAddresses(msg.envelope?.cc),
+          headers: routingHeaders(msg.headers),
           date: (msg.envelope?.date || new Date()).toISOString(),
           seen: msg.flags?.has("\\Seen") ?? false,
           flagged: msg.flags?.has("\\Flagged") ?? false,
@@ -156,7 +214,7 @@ export async function getMessage(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const lock = await client.getMailboxLock(folder);
+    const { lock, path } = await lockMailbox(client, folder);
     try {
       const msg = await client.fetchOne(
         String(uid),
@@ -173,11 +231,11 @@ export async function getMessage(
       return {
         uid,
         remoteId: String(uid),
-        id: `${meta.identityId}:${folder}:${uid}`,
+        id: `${meta.identityId}:${path}:${uid}`,
         identityId: meta.identityId,
         identityEmail: meta.identityEmail,
         identityColor: meta.identityColor,
-        folder,
+        folder: path,
         subject: parsed.subject || "(no subject)",
         snippet: (parsed.text || "").slice(0, 140),
         from: toAddress(parsed.from?.value?.[0]) || { address: "unknown" },
@@ -222,7 +280,7 @@ export async function setFlags(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const lock = await client.getMailboxLock(folder);
+    const { lock } = await lockMailbox(client, folder);
     try {
       if (flags.seen === true) await client.messageFlagsAdd({ uid }, ["\\Seen"], { uid: true });
       if (flags.seen === false) await client.messageFlagsRemove({ uid }, ["\\Seen"], { uid: true });
@@ -246,9 +304,12 @@ export async function moveMessage(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const lock = await client.getMailboxLock(folder);
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    const source = resolveFolderPath(folder, folders);
+    const target = resolveFolderPath(destination, folders);
+    const lock = await client.getMailboxLock(source);
     try {
-      await client.messageMove({ uid }, destination, { uid: true });
+      await client.messageMove({ uid }, target, { uid: true });
     } finally {
       lock.release();
     }
@@ -266,7 +327,8 @@ export async function appendMessage(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    await client.append(folder, raw, flags);
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    await client.append(resolveFolderPath(folder, folders), raw, flags);
   } finally {
     await client.logout();
   }
@@ -281,32 +343,35 @@ export async function searchMessages(
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const lock = await client.getMailboxLock(folder);
+    const { lock, path } = await lockMailbox(client, folder);
     try {
       const uids = await client.search({ body: query }, { uid: true });
       if (!uids || uids.length === 0) return [];
       const limited = uids.slice(-50);
       const messages: MailMessageSummary[] = [];
-      for await (const msg of client.fetch(limited, { uid: true, flags: true, envelope: true }, { uid: true })) {
+      for await (const msg of client.fetch(
+        limited,
+        { uid: true, flags: true, envelope: true, headers: ROUTING_HEADER_FIELDS },
+        { uid: true },
+      )) {
         const from = msg.envelope?.from?.[0];
         messages.push({
           uid: msg.uid,
           remoteId: String(msg.uid),
-          id: `${meta.identityId}:${folder}:${msg.uid}`,
+          id: `${meta.identityId}:${path}:${msg.uid}`,
           identityId: meta.identityId,
           identityEmail: meta.identityEmail,
           identityColor: meta.identityColor,
-          folder,
+          folder: path,
           subject: msg.envelope?.subject || "(no subject)",
           snippet: msg.envelope?.subject || "",
           from: {
             name: from?.name || undefined,
             address: from?.address || "unknown",
           },
-          to: (msg.envelope?.to || []).map((a) => ({
-            name: a.name || undefined,
-            address: a.address || "",
-          })),
+          to: envelopeAddresses(msg.envelope?.to),
+          cc: envelopeAddresses(msg.envelope?.cc),
+          headers: routingHeaders(msg.headers),
           date: (msg.envelope?.date || new Date()).toISOString(),
           seen: msg.flags?.has("\\Seen") ?? false,
           flagged: msg.flags?.has("\\Flagged") ?? false,

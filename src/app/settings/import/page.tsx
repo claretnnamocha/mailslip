@@ -64,7 +64,7 @@ export default function ImportPage() {
           <select
             value={identityId}
             onChange={(e) => setIdentityId(e.target.value)}
-            className="h-[46px] w-full rounded-[11px] border border-border-strong px-3"
+            className="h-[46px] w-full rounded-[11px] border border-border-strong bg-surface px-3"
           >
             {identities.map((i) => (
               <option key={i.id} value={i.id}>
