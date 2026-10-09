@@ -19,6 +19,7 @@ type MailState = {
   activeIdentityId: string | "all";
   folder: string;
   folders: MailFolder[];
+  foldersReady: boolean;
   messages: MailMessageSummary[];
   selectedId: string | null;
   selectedMessage: MailMessage | null;
@@ -37,6 +38,7 @@ type MailState = {
   setMessages: (messages: MailMessageSummary[]) => void;
   setSelectedId: (id: string | null) => void;
   setSelectedMessage: (message: MailMessage | null) => void;
+  closeMessage: () => void;
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
   openCompose: (mode?: MailState["composeMode"]) => void;
@@ -53,6 +55,7 @@ export const useMailStore = create<MailState>((set) => ({
   activeIdentityId: "all",
   folder: "INBOX",
   folders: [],
+  foldersReady: false,
   messages: [],
   selectedId: null,
   selectedMessage: null,
@@ -65,12 +68,23 @@ export const useMailStore = create<MailState>((set) => ({
   selectedIds: [],
   setIdentities: (identities) => set({ identities }),
   setWorkspaceRole: (workspaceRole) => set({ workspaceRole }),
-  setActiveIdentityId: (activeIdentityId) => set({ activeIdentityId }),
-  setFolder: (folder) => set({ folder, selectedId: null, selectedMessage: null }),
-  setFolders: (folders) => set({ folders }),
+  setActiveIdentityId: (activeIdentityId) =>
+    set({
+      activeIdentityId,
+      folder: "INBOX",
+      folders: [],
+      foldersReady: false,
+      messages: [],
+      selectedId: null,
+      selectedMessage: null,
+    }),
+  setFolder: (folder) => set({ folder }),
+  setFolders: (folders) => set({ folders, foldersReady: true }),
   setMessages: (messages) => set({ messages }),
-  setSelectedId: (selectedId) => set({ selectedId }),
+  setSelectedId: (selectedId) =>
+    set(selectedId ? { selectedId } : { selectedId: null, selectedMessage: null }),
   setSelectedMessage: (selectedMessage) => set({ selectedMessage }),
+  closeMessage: () => set({ selectedId: null, selectedMessage: null }),
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),

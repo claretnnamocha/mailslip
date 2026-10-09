@@ -15,6 +15,7 @@ import {
   TrashIcon,
   ClockIcon,
   ShieldIcon,
+  XIcon,
 } from "./icons";
 import { toast } from "sonner";
 
@@ -28,6 +29,7 @@ export function MessageView() {
     selectedId,
     selectedMessage,
     setSelectedMessage,
+    closeMessage,
     setLoadingMessage,
     loadingMessage,
     messages,
@@ -99,13 +101,20 @@ export function MessageView() {
 
   if (loadingMessage || !selectedMessage) {
     return (
-      <section className="flex h-full flex-1 flex-col bg-bg p-8">
-        <div className="skeleton mb-4 h-6 w-2/3" />
-        <div className="skeleton mb-6 h-4 w-1/3" />
-        <div className="space-y-3">
-          <div className="skeleton h-3 w-full" />
-          <div className="skeleton h-3 w-full" />
-          <div className="skeleton h-3 w-5/6" />
+      <section className="flex h-full flex-1 flex-col bg-bg">
+        <div className="flex items-center justify-end border-b border-border px-4 py-3">
+          <Button size="sm" variant="ghost" aria-label="Close message" onClick={closeMessage}>
+            <XIcon size={16} />
+          </Button>
+        </div>
+        <div className="p-8">
+          <div className="skeleton mb-4 h-6 w-2/3" />
+          <div className="skeleton mb-6 h-4 w-1/3" />
+          <div className="space-y-3">
+            <div className="skeleton h-3 w-full" />
+            <div className="skeleton h-3 w-full" />
+            <div className="skeleton h-3 w-5/6" />
+          </div>
         </div>
       </section>
     );
@@ -231,6 +240,15 @@ export function MessageView() {
           }}
         >
           <ClockIcon size={16} />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto"
+          aria-label="Close message"
+          onClick={closeMessage}
+        >
+          <XIcon size={16} />
         </Button>
       </div>
 

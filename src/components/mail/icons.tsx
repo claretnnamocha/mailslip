@@ -116,6 +116,14 @@ export function ClockIcon(props: IconProps) {
   );
 }
 
+export function ChevronIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  );
+}
+
 export function FolderIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

@@ -49,6 +49,7 @@ export type MailFolder = {
   path: string;
   name: string;
   delimiter: string;
+  parentPath?: string;
   specialUse?: string;
   selectable?: boolean;
   unseen?: number;

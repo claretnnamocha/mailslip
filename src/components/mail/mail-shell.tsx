@@ -10,7 +10,7 @@ import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
 import type { MailFolder } from "@/lib/mail/types";
-import { MenuIcon, PlusIcon, SearchIcon } from "./icons";
+import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
 
 export function MailShell() {
   const router = useRouter();
@@ -24,6 +24,7 @@ export function MailShell() {
     setWorkspaceRole,
     workspaceRole,
     activeIdentityId,
+    setActiveIdentityId,
     folder,
     setFolder,
     setFolders,
@@ -32,7 +33,10 @@ export function MailShell() {
     messages,
     selectedId,
     setSelectedId,
+    closeMessage,
     openCompose,
+    closeCompose,
+    composeOpen,
     selectedMessage,
   } = useMailStore();
   const folderRef = useRef(folder);
@@ -59,26 +63,21 @@ export function MailShell() {
 
   useEffect(() => {
     if (identities.length === 0) return;
-    const targets =
-      activeIdentityId === "all"
-        ? identities
-        : identities.filter((identity) => identity.id === activeIdentityId);
+    if (activeIdentityId === "all" || !identities.some((identity) => identity.id === activeIdentityId)) {
+      return;
+    }
     let cancelled = false;
     (async () => {
-      const lists = await Promise.all(
-        targets.map(async (identity) => {
-          const res = await fetch(`/api/mail/folders?identityId=${identity.id}`);
-          if (!res.ok) return [] as MailFolder[];
-          return (await res.json()) as MailFolder[];
-        }),
-      );
+      const res = await fetch(`/api/mail/folders?identityId=${activeIdentityId}`);
       if (cancelled) return;
+      if (!res.ok) {
+        setFolders([]);
+        return;
+      }
+      const list = (await res.json()) as MailFolder[];
       const byPath = new Map<string, MailFolder>();
-      for (const list of lists) {
-        for (const item of list) {
-          if (item.selectable === false) continue;
-          if (!byPath.has(item.path)) byPath.set(item.path, item);
-        }
+      for (const item of list) {
+        if (!byPath.has(item.path)) byPath.set(item.path, item);
       }
       const next = [...byPath.values()];
       setFolders(next);
@@ -93,12 +92,18 @@ export function MailShell() {
 
   useEffect(() => {
     if (identities.length === 0) return;
+    if (activeIdentityId === "all" || !identities.some((identity) => identity.id === activeIdentityId)) {
+      setActiveIdentityId(identities[0].id);
+    }
+  }, [identities, activeIdentityId, setActiveIdentityId]);
+
+  useEffect(() => {
+    if (identities.length === 0 || activeIdentityId === "all") return;
     let cancelled = false;
     (async () => {
       setLoadingList(true);
       try {
-        const params = new URLSearchParams({ folder });
-        if (activeIdentityId !== "all") params.set("identityId", activeIdentityId);
+        const params = new URLSearchParams({ folder, identityId: activeIdentityId });
         if (query.trim()) params.set("q", query.trim());
         const res = await fetch(`/api/mail/messages?${params}`);
         if (!res.ok) throw new Error("Failed");
@@ -116,7 +121,7 @@ export function MailShell() {
   }, [identities, activeIdentityId, folder, query, setLoadingList, setMessages]);
 
   useEffect(() => {
-    if (selectedId) setMobileView("message");
+    setMobileView(selectedId ? "message" : "list");
   }, [selectedId]);
 
   useEffect(() => {
@@ -129,6 +134,19 @@ export function MailShell() {
           target.isContentEditable);
       if (typing) return;
 
+      if (e.key === "Escape") {
+        if (document.querySelector('[role="alertdialog"]')) return;
+        if (composeOpen) {
+          e.preventDefault();
+          closeCompose();
+          return;
+        }
+        if (selectedId) {
+          e.preventDefault();
+          closeMessage();
+        }
+        return;
+      }
       if (e.key === "/" || (e.key === "f" && (e.metaKey || e.ctrlKey))) {
         e.preventDefault();
         setSearchOpen(true);
@@ -209,7 +227,7 @@ export function MailShell() {
       }
       if (e.key === "?" ) {
         toast.message("Shortcuts", {
-          description: "C compose · R reply · E archive · # trash · J/K move · / search",
+          description: "C compose · R reply · E archive · # trash · J/K move · Esc close · / search",
         });
       }
       if (e.key === "1") setFolder("INBOX");
@@ -224,6 +242,9 @@ export function MailShell() {
     setFolder,
     setMessages,
     setSelectedId,
+    closeMessage,
+    closeCompose,
+    composeOpen,
   ]);
 
   return (
@@ -241,12 +262,13 @@ export function MailShell() {
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <button
             className="rounded-lg p-2 text-text-2 hover:bg-hover md:hidden"
+            aria-label={mobileView === "message" ? "Close message" : "Open navigation"}
             onClick={() => {
-              if (mobileView === "message") setMobileView("list");
+              if (mobileView === "message") closeMessage();
               else setMobileNav(true);
             }}
           >
-            <MenuIcon size={18} />
+            {mobileView === "message" ? <XIcon size={18} /> : <MenuIcon size={18} />}
           </button>
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[10px] border border-border-strong bg-surface px-3 py-2">
             <SearchIcon size={16} className="shrink-0 text-text-3" />
@@ -270,7 +292,7 @@ export function MailShell() {
 
         <div className="flex min-h-0 flex-1">
           <div className={mobileView === "list" ? "flex w-full md:w-auto" : "hidden md:flex"}>
-            <MessageList onSelect={() => setMobileView("message")} />
+            <MessageList query={query} onSelect={() => setMobileView("message")} />
           </div>
           <div
             className={

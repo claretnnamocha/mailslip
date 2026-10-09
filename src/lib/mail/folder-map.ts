@@ -57,3 +57,65 @@ export function sortFolders<T extends FolderLike>(folders: T[]): T[] {
     return a.path.localeCompare(b.path);
   });
 }
+
+export type FolderNode<T extends FolderLike> = {
+  folder: T;
+  children: FolderNode<T>[];
+};
+
+function parentPathOf<T extends FolderLike & { parentPath?: string }>(
+  folder: T,
+  byPath: Map<string, T>,
+): string | null {
+  if (folder.parentPath && folder.parentPath !== folder.path && byPath.has(folder.parentPath)) {
+    return folder.parentPath;
+  }
+  const delimiter = folder.delimiter || "/";
+  const parts = folder.path.split(delimiter);
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const candidate = parts.slice(0, i).join(delimiter);
+    if (byPath.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+export function buildFolderTree<T extends FolderLike & { parentPath?: string }>(
+  folders: T[],
+): FolderNode<T>[] {
+  const byPath = new Map(folders.map((folder) => [folder.path, folder]));
+  const childPaths = new Map<string, T[]>();
+  const roots: T[] = [];
+
+  for (const folder of folders) {
+    const parent = parentPathOf(folder, byPath);
+    if (!parent) {
+      roots.push(folder);
+      continue;
+    }
+    const list = childPaths.get(parent) || [];
+    list.push(folder);
+    childPaths.set(parent, list);
+  }
+
+  function node(folder: T): FolderNode<T> {
+    return {
+      folder,
+      children: sortFolders(childPaths.get(folder.path) || []).map(node),
+    };
+  }
+
+  function prune(nodes: FolderNode<T>[]): FolderNode<T>[] {
+    return nodes
+      .map((item) => ({ ...item, children: prune(item.children) }))
+      .filter((item) => item.folder.selectable !== false || item.children.length > 0);
+  }
+
+  return prune(sortFolders(roots).map(node));
+}
+
+export function groupedUnseen<T extends FolderLike & { unseen?: number }>(
+  node: FolderNode<T>,
+): number {
+  const own = node.folder.selectable === false ? 0 : node.folder.unseen || 0;
+  return own + node.children.reduce((sum, child) => sum + groupedUnseen(child), 0);
+}

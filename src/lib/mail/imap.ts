@@ -97,7 +97,9 @@ function boxToFolder(box: {
   name: string;
   delimiter?: string;
   specialUse?: string | false | null;
+  parentPath?: string | false | null;
   flags?: Set<string>;
+  status?: { unseen?: number; messages?: number };
 }): MailFolder {
   const flags = box.flags;
   const blocked = Boolean(flags?.has("\\Noselect") || flags?.has("\\NonExistent"));
@@ -105,8 +107,11 @@ function boxToFolder(box: {
     path: box.path,
     name: box.name,
     delimiter: box.delimiter || "/",
+    parentPath: box.parentPath || undefined,
     specialUse: box.specialUse || undefined,
     selectable: !blocked,
+    unseen: box.status?.unseen,
+    total: box.status?.messages,
   };
 }
 
@@ -135,7 +140,12 @@ export async function listFolders(config: ConnectionConfig): Promise<MailFolder[
   const client = clientFromConfig(config);
   await client.connect();
   try {
-    const list = await client.list();
+    let list;
+    try {
+      list = await client.list({ statusQuery: { unseen: true, messages: true } });
+    } catch {
+      list = await client.list();
+    }
     return list.map((box) => boxToFolder(box));
   } finally {
     await client.logout();
