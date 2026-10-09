@@ -34,6 +34,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
     folder,
     setFolder,
     identities,
+    workspaceRole,
     activeIdentityId,
     setActiveIdentityId,
     openCompose,
@@ -128,13 +129,15 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onClose
               <span className="mono truncate">{identity.email}</span>
             </button>
           ))}
-          <Link
-            href="/onboarding"
-            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] text-text-3 hover:bg-hover hover:text-text"
-          >
-            <PlusIcon size={14} />
-            Add identity
-          </Link>
+          {(workspaceRole === "OWNER" || workspaceRole === "ADMIN") && (
+            <Link
+              href="/onboarding"
+              className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] text-text-3 hover:bg-hover hover:text-text"
+            >
+              <PlusIcon size={14} />
+              Add identity
+            </Link>
+          )}
         </div>
       </nav>
 

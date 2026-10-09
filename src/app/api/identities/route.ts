@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
-import { getPrimaryWorkspace, listAccessibleIdentities } from "@/lib/identities";
+import { getPrimaryWorkspace, isAdminRole, listAccessibleIdentities } from "@/lib/identities";
 import { testIdentityConnection } from "@/lib/mail/service";
 import { checkDeliverability } from "@/lib/mail/dns-health";
 
@@ -50,6 +50,7 @@ const createSchema = z.object({
   recipientFilter: z.string().optional(),
   test: z.boolean().optional(),
   color: z.string().optional(),
+  assignUserId: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -58,8 +59,25 @@ export async function POST(request: Request) {
 
   const membership = await getPrimaryWorkspace(authResult.userId);
   if (!membership) return jsonError("No workspace", 400);
+  if (!isAdminRole(membership.role)) {
+    return jsonError("Only owners and admins can connect mailboxes", 403);
+  }
 
   const body = createSchema.parse(await request.json());
+
+  let ownerUserId = authResult.userId;
+  if (body.assignUserId && body.assignUserId !== authResult.userId) {
+    const target = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: membership.workspaceId,
+          userId: body.assignUserId,
+        },
+      },
+    });
+    if (!target) return jsonError("That person is not in this workspace", 400);
+    ownerUserId = target.userId;
+  }
 
   const draft = {
     email: body.email,
@@ -95,7 +113,7 @@ export async function POST(request: Request) {
   const identity = await prisma.mailIdentity.create({
     data: {
       workspaceId: membership.workspaceId,
-      ownerUserId: authResult.userId,
+      ownerUserId,
       type: body.type || "OWN_MAILBOX",
       email: body.email,
       displayName: body.displayName,
@@ -125,6 +143,16 @@ export async function POST(request: Request) {
       dmarcOk: health?.dmarcOk ?? null,
     },
   });
+
+  if (ownerUserId !== authResult.userId) {
+    await prisma.identityGrant.create({
+      data: {
+        identityId: identity.id,
+        userId: ownerUserId,
+        permission: "SEND_AND_READ",
+      },
+    });
+  }
 
   return NextResponse.json({ identity, health });
 }

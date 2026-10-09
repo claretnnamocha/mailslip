@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -19,13 +20,19 @@ export default function TeamSettingsPage() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [identities, setIdentities] = useState<{ id: string; email: string }[]>([]);
   const [grantIdentityIds, setGrantIdentityIds] = useState<string[]>([]);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const isAdmin = viewerRole === "OWNER" || viewerRole === "ADMIN";
 
   async function load() {
     const [teamRes, idRes] = await Promise.all([
       fetch("/api/team"),
       fetch("/api/identities"),
     ]);
-    if (teamRes.ok) setMembers((await teamRes.json()).members || []);
+    if (teamRes.ok) {
+      const data = await teamRes.json();
+      setMembers(data.members || []);
+      setViewerRole(data.role ?? null);
+    }
     if (idRes.ok) setIdentities(await idRes.json());
   }
 
@@ -65,6 +72,7 @@ export default function TeamSettingsPage() {
         Admin provisioning — create accounts and hand credentials out-of-band. Not an email invite.
       </p>
 
+      {isAdmin && (
       <form
         onSubmit={addPerson}
         className="mt-8 max-w-xl space-y-4 rounded-2xl border border-border bg-surface p-6"
@@ -93,7 +101,7 @@ export default function TeamSettingsPage() {
         {role === "MEMBER" && (
           <div>
             <div className="mb-2 text-[13px] font-medium text-text-2">
-              Grant mailboxes (allow-listed)
+              Grant existing shared mailboxes. To connect a new server for this person, create the account, then use Connect mailbox.
             </div>
             <div className="space-y-2">
               {identities.map((id) => (
@@ -129,6 +137,7 @@ export default function TeamSettingsPage() {
           </div>
         )}
       </form>
+      )}
 
       <div className="mt-8 space-y-2">
         {members.map((m) => (
@@ -140,9 +149,18 @@ export default function TeamSettingsPage() {
               <div className="font-medium">{m.user.name || m.user.email}</div>
               <div className="mono text-[12px] text-text-3">{m.user.email}</div>
             </div>
-            <span className="mono text-[11px] uppercase tracking-wide text-text-2">
-              {m.role}
-            </span>
+            <div className="flex items-center gap-3">
+              {isAdmin && m.role === "MEMBER" && (
+                <Link href={`/onboarding?for=${m.user.id}`}>
+                  <Button size="sm" variant="secondary">
+                    Connect mailbox
+                  </Button>
+                </Link>
+              )}
+              <span className="mono text-[11px] uppercase tracking-wide text-text-2">
+                {m.role}
+              </span>
+            </div>
           </div>
         ))}
       </div>

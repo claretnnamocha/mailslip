@@ -9,7 +9,6 @@ import { MessageView } from "./message-view";
 import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
 import { MenuIcon, PlusIcon, SearchIcon } from "./icons";
-import { Button } from "@/components/ui/button";
 
 export function MailShell() {
   const router = useRouter();
@@ -20,6 +19,8 @@ export function MailShell() {
   const {
     identities,
     setIdentities,
+    setWorkspaceRole,
+    workspaceRole,
     activeIdentityId,
     folder,
     setFolder,
@@ -34,15 +35,22 @@ export function MailShell() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/identities");
-      if (!res.ok) return;
-      const data = await res.json();
+      const [idRes, teamRes] = await Promise.all([
+        fetch("/api/identities"),
+        fetch("/api/team"),
+      ]);
+      const team = teamRes.ok ? await teamRes.json() : null;
+      const role = typeof team?.role === "string" ? team.role : null;
+      const isAdmin = role === "OWNER" || role === "ADMIN";
+      setWorkspaceRole(role);
+      if (!idRes.ok) return;
+      const data = await idRes.json();
       setIdentities(data);
-      if (data.length === 0) {
+      if (data.length === 0 && isAdmin) {
         router.replace("/onboarding");
       }
     })();
-  }, [router, setIdentities]);
+  }, [router, setIdentities, setWorkspaceRole]);
 
   useEffect(() => {
     if (identities.length === 0) return;
@@ -245,18 +253,15 @@ export function MailShell() {
         <PlusIcon size={20} />
       </button>
 
-      {identities.length === 0 && (
+      {identities.length === 0 && workspaceRole && workspaceRole !== "OWNER" && workspaceRole !== "ADMIN" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-6">
           <div className="max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-[var(--shadow)]">
             <h2 className="text-[22px] font-semibold tracking-[-0.02em]">
-              Connect your first account
+              No mailbox yet
             </h2>
             <p className="mt-2 text-[14px] text-text-2">
-              Mailslip is a client, not a host. Point it at a mailbox you already own.
+              An admin connects mailboxes for members. You&apos;ll see mail here once one is assigned to you.
             </p>
-            <Button className="mt-6 w-full" onClick={() => router.push("/onboarding")}>
-              Get started
-            </Button>
           </div>
         </div>
       )}

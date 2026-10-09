@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useDialog } from "@/components/dialog-provider";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useWorkspaceRole } from "@/lib/use-workspace-role";
 
 type Identity = {
   id: string;
@@ -23,6 +24,7 @@ type Identity = {
 export default function IdentitiesSettingsPage() {
   const [identities, setIdentities] = useState<Identity[]>([]);
   const { confirm } = useDialog();
+  const { isAdmin } = useWorkspaceRole();
 
   async function load() {
     const res = await fetch("/api/identities");
@@ -57,18 +59,24 @@ export default function IdentitiesSettingsPage() {
         <div>
           <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Mail identities</h1>
           <p className="mt-2 text-[15px] text-text-2">
-            Mailboxes, scoped aliases, and domain addresses connected to your profile.
+            {isAdmin
+              ? "Mailboxes connected for this workspace. Assign one to a member from Team, or while connecting."
+              : "Mailboxes an admin has connected for you."}
           </p>
         </div>
-        <Link href="/onboarding">
-          <Button size="sm">Add identity</Button>
-        </Link>
+        {isAdmin && (
+          <Link href="/onboarding">
+            <Button size="sm">Add identity</Button>
+          </Link>
+        )}
       </div>
 
       <div className="mt-8 space-y-3">
         {identities.length === 0 && (
           <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-text-2">
-            No identities yet. Connect a mailbox you already own.
+            {isAdmin
+              ? "No identities yet. Connect a mailbox, or set one up for a member from Team."
+              : "No mailbox yet. An admin connects mailboxes for members."}
           </div>
         )}
         {identities.map((identity) => (
@@ -127,11 +135,13 @@ export default function IdentitiesSettingsPage() {
                 </span>
               ))}
             </div>
-            <div className="mt-4">
-              <Button size="sm" variant="danger" onClick={() => disconnect(identity.id)}>
-                Disconnect
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="mt-4">
+                <Button size="sm" variant="danger" onClick={() => disconnect(identity.id)}>
+                  Disconnect
+                </Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
+import { useWorkspaceRole } from "@/lib/use-workspace-role";
 
 const sections = [
   { href: "/settings", label: "Profile" },
@@ -24,8 +25,12 @@ const sections = [
   { href: "/settings/danger", label: "Danger zone" },
 ];
 
+const adminOnly = new Set(["/settings/team", "/settings/domains"]);
+
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { isAdmin } = useWorkspaceRole();
+  const visible = sections.filter((section) => isAdmin || !adminOnly.has(section.href));
 
   return (
     <div className="min-h-dvh bg-bg">
@@ -38,7 +43,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto flex max-w-6xl gap-8 px-6 py-8">
         <nav className="hidden w-52 shrink-0 md:block">
           <div className="sticky top-8 space-y-0.5">
-            {sections.map((s) => {
+            {visible.map((s) => {
               const active =
                 s.href === "/settings"
                   ? pathname === "/settings"

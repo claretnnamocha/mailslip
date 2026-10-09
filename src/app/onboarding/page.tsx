@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,10 +110,19 @@ const initial: FormState = {
   calDavUrl: "",
 };
 
+type WorkspaceMemberOption = {
+  role: string;
+  user: { id: string; name?: string | null; email: string };
+};
+
 export default function OnboardingPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<FormState>(initial);
+  const [members, setMembers] = useState<WorkspaceMemberOption[]>([]);
+  const [assignUserId, setAssignUserId] = useState<string>("");
+  const [allowed, setAllowed] = useState(false);
   const [testing, setTesting] = useState(false);
   const [health, setHealth] = useState<{
     mxOk?: boolean;
@@ -121,6 +131,39 @@ export default function OnboardingPage() {
     dkimOk?: boolean | null;
   } | null>(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("for") || "";
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/team");
+      if (!res.ok) {
+        router.replace("/mail");
+        return;
+      }
+      const data = await res.json();
+      if (cancelled) return;
+      const isAdmin = data.role === "OWNER" || data.role === "ADMIN";
+      if (!isAdmin) {
+        router.replace("/mail");
+        return;
+      }
+      const list = (data.members || []) as WorkspaceMemberOption[];
+      setMembers(list);
+      if (requested && list.some((member) => member.user.id === requested)) {
+        setAssignUserId(requested);
+      }
+      setAllowed(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  const assignable = members.filter(
+    (member) => member.role === "MEMBER" && member.user.id !== session?.user?.id,
+  );
+  const assignee = assignable.find((member) => member.user.id === assignUserId)?.user;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -161,6 +204,7 @@ export default function OnboardingPage() {
           smtpPort: Number(form.smtpPort) || undefined,
           cardDavUrl: form.cardDavUrl || undefined,
           calDavUrl: form.calDavUrl || undefined,
+          assignUserId: assignee?.id,
           test: true,
         }),
       });
@@ -168,7 +212,7 @@ export default function OnboardingPage() {
       if (!res.ok) throw new Error(data.error || "Connection failed");
       setHealth(data.health || null);
       setStep(6);
-      toast.success("Mailbox connected");
+      toast.success(assignee ? `Mailbox connected for ${assignee.name || assignee.email}` : "Mailbox connected");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
     } finally {
@@ -182,6 +226,10 @@ export default function OnboardingPage() {
       : form.incomingProtocol === "POP3"
         ? `${form.pop3Host || "—"}:${form.pop3Port} · SMTP ${form.smtpHost || "—"}:${form.smtpPort}`
         : `${form.imapHost || "—"}:${form.imapPort} · SMTP ${form.smtpHost || "—"}:${form.smtpPort}`;
+
+  if (!allowed) {
+    return <div className="min-h-dvh bg-bg" />;
+  }
 
   return (
     <div className="min-h-dvh bg-bg px-6 py-10 md:px-10">
@@ -205,11 +253,36 @@ export default function OnboardingPage() {
         {step === 1 && (
           <div>
             <h1 className="text-[30px] font-semibold tracking-[-0.02em]">
-              Connect an account you own
+              {assignee ? `Connect a mailbox for ${assignee.name || assignee.email}` : "Connect an account you own"}
             </h1>
             <p className="mt-3 max-w-[460px] text-[16px] leading-[1.55] text-text-2">
-              No migration, no new address. Point Mailslip at your existing mailbox.
+              {assignee
+                ? "The member can read and send with this mailbox. They cannot add or remove connections."
+                : "No migration, no new address. Point Mailslip at an existing mailbox."}
             </p>
+            {assignable.length > 0 && (
+              <label className="mt-6 block">
+                <span className="mb-2 block text-[13px] font-medium text-text-2">
+                  This mailbox is for
+                </span>
+                <select
+                  value={assignUserId}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setAssignUserId(next);
+                    if (next) update("connectType", "individual");
+                  }}
+                  className="h-[46px] w-full rounded-[11px] border border-border-strong bg-surface px-3"
+                >
+                  <option value="">Me</option>
+                  {assignable.map((member) => (
+                    <option key={member.user.id} value={member.user.id}>
+                      {member.user.name || member.user.email} · {member.user.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="mt-8 space-y-3.5">
               {(
                 [
@@ -218,11 +291,15 @@ export default function OnboardingPage() {
                     title: "Individual email address",
                     body: "A single inbox like you@gmail.com or hello@yourdomain.com.",
                   },
-                  {
-                    id: "domain" as const,
-                    title: "Full domain",
-                    body: "Connect a domain once; every address becomes a send-from identity.",
-                  },
+                  ...(assignee
+                    ? []
+                    : [
+                        {
+                          id: "domain" as const,
+                          title: "Full domain",
+                          body: "Connect a domain once; every address becomes a send-from identity.",
+                        },
+                      ]),
                 ] as const
               ).map((option) => (
                 <button
@@ -583,7 +660,12 @@ export default function OnboardingPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-8 flex justify-end">
+            <div className="mt-8 flex justify-end gap-2">
+              {assignee && (
+                <Button variant="secondary" onClick={() => router.push("/settings/team")}>
+                  Back to team
+                </Button>
+              )}
               <Button onClick={() => router.push("/mail")}>Open inbox</Button>
             </div>
           </div>

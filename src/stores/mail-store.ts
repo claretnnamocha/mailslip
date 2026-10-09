@@ -15,6 +15,7 @@ export type IdentitySummary = {
 
 type MailState = {
   identities: IdentitySummary[];
+  workspaceRole: string | null;
   activeIdentityId: string | "all";
   folder: string;
   messages: MailMessageSummary[];
@@ -28,6 +29,7 @@ type MailState = {
   searchQuery: string;
   selectedIds: string[];
   setIdentities: (identities: IdentitySummary[]) => void;
+  setWorkspaceRole: (role: string | null) => void;
   setActiveIdentityId: (id: string | "all") => void;
   setFolder: (folder: string) => void;
   setMessages: (messages: MailMessageSummary[]) => void;
@@ -45,6 +47,7 @@ type MailState = {
 
 export const useMailStore = create<MailState>((set) => ({
   identities: [],
+  workspaceRole: null,
   activeIdentityId: "all",
   folder: "INBOX",
   messages: [],
@@ -58,6 +61,7 @@ export const useMailStore = create<MailState>((set) => ({
   searchQuery: "",
   selectedIds: [],
   setIdentities: (identities) => set({ identities }),
+  setWorkspaceRole: (workspaceRole) => set({ workspaceRole }),
   setActiveIdentityId: (activeIdentityId) => set({ activeIdentityId }),
   setFolder: (folder) => set({ folder, selectedId: null, selectedMessage: null }),
   setMessages: (messages) => set({ messages }),

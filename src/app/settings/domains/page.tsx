@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useDialog } from "@/components/dialog-provider";
+import { useWorkspaceRole } from "@/lib/use-workspace-role";
 import { toast } from "sonner";
 
 type Domain = {
@@ -16,6 +18,8 @@ type Domain = {
 export default function DomainsSettingsPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [domain, setDomain] = useState("");
+  const { confirm } = useDialog();
+  const { isAdmin, ready } = useWorkspaceRole();
 
   async function load() {
     const res = await fetch("/api/domains");
@@ -54,6 +58,25 @@ export default function DomainsSettingsPage() {
     load();
   }
 
+  async function remove(id: string, name: string) {
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      description:
+        "This releases the domain from the workspace. Connected mailboxes stay connected, and another workspace can claim the domain.",
+      confirmLabel: "Remove domain",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/domains/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || "Could not remove domain");
+      return;
+    }
+    toast.success("Domain removed");
+    load();
+  }
+
   return (
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Domain</h1>
@@ -61,6 +84,7 @@ export default function DomainsSettingsPage() {
         A domain is exclusively owned by one workspace. Verify with TXT, then send as any address.
       </p>
 
+      {ready && isAdmin && (
       <form
         onSubmit={addDomain}
         className="mt-8 flex max-w-xl flex-col gap-3 rounded-2xl border border-border bg-surface p-6 sm:flex-row sm:items-end"
@@ -79,6 +103,7 @@ export default function DomainsSettingsPage() {
           Add domain
         </Button>
       </form>
+      )}
 
       <div className="mt-8 space-y-3">
         {domains.map((d) => (
@@ -90,11 +115,18 @@ export default function DomainsSettingsPage() {
                   {d.verified ? "Verified" : "Pending verification"}
                 </div>
               </div>
-              {!d.verified && (
-                <Button size="sm" variant="secondary" onClick={() => verify(d.id)}>
-                  Check TXT
-                </Button>
-              )}
+              <div className="flex shrink-0 gap-2">
+                {!d.verified && isAdmin && (
+                  <Button size="sm" variant="secondary" onClick={() => verify(d.id)}>
+                    Check TXT
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button size="sm" variant="danger" onClick={() => remove(d.id, d.domain)}>
+                    Remove
+                  </Button>
+                )}
+              </div>
             </div>
             {!d.verified && (
               <div className="mt-4 rounded-[11px] bg-surface-2 p-4 text-[13px]">
