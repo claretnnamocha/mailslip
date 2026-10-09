@@ -43,7 +43,12 @@ npm run docker:down    # stop all
 npm run docker:restart # rebuild/restart only the app
 ```
 
-Create an account at http://localhost:3000/register, then connect a real mailbox in onboarding.
+Set `MAILSLIP_MODE` in `.env`:
+
+- `cloud` — public landing page and account signup at `/register`
+- `self-hosted` — sign-in only. `/` goes to `/login`, and account creation is hidden and rejected
+
+In cloud mode, create an account at http://localhost:3000/register, then connect a real mailbox in onboarding. In self-hosted mode, sign in with an account that already exists (an admin can still add team members).
 
 ### Local Next.js (host) + Docker infra only
 

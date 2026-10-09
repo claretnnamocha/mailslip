@@ -5,6 +5,7 @@ import {
 } from "@/lib/identities";
 import {
   appendMessage,
+  getImapMessages,
   getMessage,
   getQuota,
   listFolders,
@@ -184,6 +185,47 @@ export async function fetchMessage(
   }
 
   return full;
+}
+
+export async function fetchThread(
+  identity: MailIdentity,
+  folder: string,
+  remoteIds: string[],
+) {
+  const ids = [...new Set(remoteIds.map((id) => id.trim()).filter(Boolean))].slice(0, 30);
+  if (ids.length === 0) return [];
+
+  const backing = await resolveBackingIdentity(identity);
+  const config = identityToConfig(backing);
+  if (!config) throw new Error("Identity credentials missing");
+  const m = meta(identity);
+
+  let messages;
+  if (backing.incomingProtocol === "IMAP") {
+    messages = await getImapMessages(
+      config,
+      folder,
+      ids.map((id) => Number(id)).filter((uid) => uid > 0),
+      m,
+    );
+  } else {
+    messages = [];
+    for (const id of ids) {
+      const message = await fetchMessage(identity, folder, Number(id) || 0, id);
+      if (message) messages.push(message);
+    }
+    return messages.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  }
+
+  const scope = recipientScopeForIdentity(identity);
+  const visible = messages.filter((message) => {
+    if (!scope) return true;
+    const sent = folder.toLowerCase().includes("sent");
+    return sent
+      ? message.from.address.toLowerCase() === identity.email.toLowerCase()
+      : messageMatchesScope(message, scope, identity.matchHeader);
+  });
+  return visible.sort((a, b) => +new Date(a.date) - +new Date(b.date));
 }
 
 export async function updateMessageFlags(

@@ -160,6 +160,9 @@ export async function listJmapMessages(
           "preview",
           "hasAttachment",
           "keywords",
+          "threadId",
+          "messageId",
+          "inReplyTo",
         ],
       },
       "1",
@@ -194,6 +197,13 @@ export async function listJmapMessages(
       flagged: Boolean(keywords.$flagged),
       answered: Boolean(keywords.$answered),
       hasAttachments: Boolean(email.hasAttachment),
+      threadId: email.threadId ? String(email.threadId) : undefined,
+      messageId: Array.isArray(email.messageId)
+        ? String(email.messageId[0] || "") || undefined
+        : undefined,
+      inReplyTo: Array.isArray(email.inReplyTo)
+        ? String(email.inReplyTo[0] || "") || undefined
+        : undefined,
     };
   });
 }

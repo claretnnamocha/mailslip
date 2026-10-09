@@ -9,6 +9,7 @@ import { MessageView } from "./message-view";
 import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
+import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
 import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
 
@@ -172,57 +173,44 @@ export function MailShell() {
         openCompose("forward");
         return;
       }
-      if (e.key === "e" && selectedId) {
+      if ((e.key === "e" || e.key === "#") && selectedId) {
         e.preventDefault();
-        const summary = messages.find((m) => m.id === selectedId);
-        if (!summary) return;
-        void fetch(`/api/mail/messages/${summary.uid}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            identityId: summary.identityId,
-            folder: summary.folder,
-            remoteId: summary.remoteId,
-            action: "move",
-            destination: "Archive",
-          }),
-        }).then(() => {
-          toast.success("Archived");
-          setMessages(messages.filter((m) => m.id !== selectedId));
-          setSelectedId(null);
-        });
-        return;
-      }
-      if (e.key === "#" && selectedId) {
-        e.preventDefault();
-        const summary = messages.find((m) => m.id === selectedId);
-        if (!summary) return;
-        void fetch(`/api/mail/messages/${summary.uid}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            identityId: summary.identityId,
-            folder: summary.folder,
-            remoteId: summary.remoteId,
-            action: "move",
-            destination: "Trash",
-          }),
-        }).then(() => {
-          toast.success("Moved to trash");
-          setMessages(messages.filter((m) => m.id !== selectedId));
+        const thread = threadContaining(messages, selectedId);
+        const targets = thread?.messages || messages.filter((message) => message.id === selectedId);
+        if (targets.length === 0) return;
+        const destination = e.key === "e" ? "Archive" : "Trash";
+        void Promise.all(
+          targets.map((summary) =>
+            fetch(`/api/mail/messages/${summary.uid}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                identityId: summary.identityId,
+                folder: summary.folder,
+                remoteId: summary.remoteId,
+                action: "move",
+                destination,
+              }),
+            }),
+          ),
+        ).then(() => {
+          toast.success(e.key === "e" ? "Archived" : "Moved to trash");
+          const removed = new Set(targets.map((message) => message.id));
+          setMessages(messages.filter((message) => !removed.has(message.id)));
           setSelectedId(null);
         });
         return;
       }
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
-        if (messages.length === 0) return;
-        const idx = messages.findIndex((m) => m.id === selectedId);
+        const threads = groupThreads(messages);
+        if (threads.length === 0) return;
+        const idx = threads.findIndex((thread) => thread.messages.some((message) => message.id === selectedId));
         const next =
           e.key === "j"
-            ? messages[Math.min(messages.length - 1, Math.max(0, idx) + 1)]
-            : messages[Math.max(0, (idx < 0 ? 1 : idx) - 1)];
-        if (next) setSelectedId(next.id);
+            ? threads[Math.min(threads.length - 1, Math.max(0, idx) + 1)]
+            : threads[Math.max(0, (idx < 0 ? 1 : idx) - 1)];
+        if (next) setSelectedId(next.latest.id);
         return;
       }
       if (e.key === "?" ) {

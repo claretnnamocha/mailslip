@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
+import { useHostingMode } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { LogOutIcon } from "@/components/mail/icons";
 import { cn } from "@/lib/utils";
@@ -11,14 +12,16 @@ type Props = {
 };
 
 /**
- * Clears the Auth.js session cookie and returns to the landing page.
- * Dev credentials: session ends immediately.
+ * Clears the Auth.js session cookie.
+ * Cloud returns to the landing page. Self-hosted returns to sign-in.
  * Zitadel: Mailslip session ends; configure post-logout redirect on the
  * Zitadel app if you also want the IdP session cleared.
  */
 export function SignOutButton({ className, variant = "button" }: Props) {
+  const hosting = useHostingMode();
+
   function handleSignOut() {
-    void signOut({ callbackUrl: "/" });
+    void signOut({ callbackUrl: hosting === "cloud" ? "/" : "/login" });
   }
 
   if (variant === "sidebar") {

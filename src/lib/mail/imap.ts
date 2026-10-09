@@ -8,6 +8,7 @@ import type {
   MailAddress,
 } from "./types";
 import { resolveFolderPath } from "./folder-map";
+import { normalizeMessageId } from "./thread";
 
 function clientFromConfig(config: ConnectionConfig) {
   return new ImapFlow({
@@ -20,6 +21,85 @@ function clientFromConfig(config: ConnectionConfig) {
     },
     logger: false,
   });
+}
+
+type ImapSlot = { client: ImapFlow; tail: Promise<void> };
+
+const imapSlots = new Map<string, ImapSlot>();
+const imapConnecting = new Map<string, Promise<ImapSlot>>();
+
+function imapKey(config: ConnectionConfig) {
+  return `${config.imapHost}|${config.imapPort}|${config.username}`;
+}
+
+function isConnectionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /socket|closed|timed out|timeout|not authenticated|econnreset|epipe|unexpected close|connection/i.test(
+    message,
+  );
+}
+
+const closingImap = new WeakSet<ImapFlow>();
+
+function dropImap(key: string, client: ImapFlow) {
+  if (imapSlots.get(key)?.client === client) imapSlots.delete(key);
+  if (closingImap.has(client)) return;
+  closingImap.add(client);
+  try {
+    client.close();
+  } catch {
+    /* already closed */
+  }
+}
+
+async function acquireImap(config: ConnectionConfig): Promise<ImapSlot> {
+  const key = imapKey(config);
+  const existing = imapSlots.get(key);
+  if (existing?.client.usable) return existing;
+
+  const pending = imapConnecting.get(key);
+  if (pending) return pending;
+
+  const connecting = (async () => {
+    if (existing) dropImap(key, existing.client);
+    const client = clientFromConfig(config);
+    client.on("error", () => dropImap(key, client));
+    client.on("close", () => {
+      if (imapSlots.get(key)?.client === client) imapSlots.delete(key);
+    });
+    await client.connect();
+    const slot: ImapSlot = { client, tail: Promise.resolve() };
+    imapSlots.set(key, slot);
+    return slot;
+  })();
+
+  imapConnecting.set(key, connecting);
+  try {
+    return await connecting;
+  } finally {
+    imapConnecting.delete(key);
+  }
+}
+
+async function withImap<T>(config: ConnectionConfig, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
+  const key = imapKey(config);
+  const slot = await acquireImap(config);
+  const previous = slot.tail;
+  let release: () => void = () => {};
+  slot.tail = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await fn(slot.client);
+  } catch (error) {
+    if (!isConnectionError(error)) throw error;
+    dropImap(key, slot.client);
+    const fresh = await acquireImap(config);
+    return fn(fresh.client);
+  } finally {
+    release();
+  }
 }
 
 function toAddress(input?: { name?: string | null; address?: string | null } | null): MailAddress | null {
@@ -53,6 +133,23 @@ function routingHeaders(raw?: Buffer | null): Record<string, string> {
 }
 
 const ROUTING_HEADER_FIELDS = ["delivered-to", "x-original-to", "envelope-to", "x-envelope-to"];
+const LIST_HEADER_FIELDS = [...ROUTING_HEADER_FIELDS, "references"];
+
+function threadFields(
+  envelope?: { messageId?: string | null; inReplyTo?: string | null } | null,
+  headers?: Record<string, string>,
+) {
+  const references = (headers?.references || "")
+    .split(/\s+/)
+    .map((id) => normalizeMessageId(id))
+    .filter((id): id is string => Boolean(id));
+  if (headers?.references) delete headers.references;
+  return {
+    messageId: normalizeMessageId(envelope?.messageId),
+    inReplyTo: normalizeMessageId(envelope?.inReplyTo),
+    references,
+  };
+}
 
 function toAddressList(
   input?:
@@ -159,9 +256,7 @@ export async function listMessages(
     identityId: "",
   },
 ): Promise<MailMessageSummary[]> {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  return withImap(config, async (client) => {
     const { lock, path } = await lockMailbox(client, folder);
     try {
       const limit = options.limit ?? 50;
@@ -174,10 +269,11 @@ export async function listMessages(
         flags: true,
         envelope: true,
         bodyStructure: true,
-        headers: ROUTING_HEADER_FIELDS,
+        headers: LIST_HEADER_FIELDS,
       })) {
         const from = msg.envelope?.from?.[0];
         const subject = msg.envelope?.subject || "(no subject)";
+        const headers = routingHeaders(msg.headers);
         messages.push({
           uid: msg.uid,
           remoteId: String(msg.uid),
@@ -194,7 +290,8 @@ export async function listMessages(
           },
           to: envelopeAddresses(msg.envelope?.to),
           cc: envelopeAddresses(msg.envelope?.cc),
-          headers: routingHeaders(msg.headers),
+          headers,
+          ...threadFields(msg.envelope, headers),
           date: (msg.envelope?.date || new Date()).toISOString(),
           seen: msg.flags?.has("\\Seen") ?? false,
           flagged: msg.flags?.has("\\Flagged") ?? false,
@@ -210,9 +307,58 @@ export async function listMessages(
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
+  });
+}
+
+async function messageFromSource(
+  source: Buffer,
+  uid: number,
+  path: string,
+  flags: Set<string> | undefined,
+  meta: { identityId: string; identityEmail?: string; identityColor?: string },
+): Promise<MailMessage> {
+  const parsed = await simpleParser(source);
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed.headers || {})) {
+    headers[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
   }
+  const references = parsed.references
+    ? (Array.isArray(parsed.references) ? parsed.references : [parsed.references])
+        .map((id) => normalizeMessageId(id))
+        .filter((id): id is string => Boolean(id))
+    : undefined;
+
+  return {
+    uid,
+    remoteId: String(uid),
+    id: `${meta.identityId}:${path}:${uid}`,
+    identityId: meta.identityId,
+    identityEmail: meta.identityEmail,
+    identityColor: meta.identityColor,
+    folder: path,
+    subject: parsed.subject || "(no subject)",
+    snippet: (parsed.text || "").slice(0, 140),
+    from: toAddress(parsed.from?.value?.[0]) || { address: "unknown" },
+    to: toAddressList(parsed.to),
+    cc: toAddressList(parsed.cc),
+    bcc: toAddressList(parsed.bcc),
+    date: (parsed.date || new Date()).toISOString(),
+    seen: flags?.has("\\Seen") ?? false,
+    flagged: flags?.has("\\Flagged") ?? false,
+    answered: flags?.has("\\Answered") ?? false,
+    hasAttachments: (parsed.attachments?.length || 0) > 0,
+    html: typeof parsed.html === "string" ? parsed.html : undefined,
+    text: parsed.text || undefined,
+    attachments: (parsed.attachments || []).map((a) => ({
+      filename: a.filename || "attachment",
+      contentType: a.contentType,
+      size: a.size,
+    })),
+    headers,
+    messageId: normalizeMessageId(parsed.messageId),
+    inReplyTo: normalizeMessageId(parsed.inReplyTo),
+    references,
+  };
 }
 
 export async function getMessage(
@@ -221,64 +367,31 @@ export async function getMessage(
   uid: number,
   meta: { identityId: string; identityEmail?: string; identityColor?: string },
 ): Promise<MailMessage | null> {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  const messages = await getImapMessages(config, folder, [uid], meta);
+  return messages[0] || null;
+}
+
+export async function getImapMessages(
+  config: ConnectionConfig,
+  folder: string,
+  uids: number[],
+  meta: { identityId: string; identityEmail?: string; identityColor?: string },
+): Promise<MailMessage[]> {
+  const unique = [...new Set(uids.filter((uid) => uid > 0))].slice(0, 30);
+  if (unique.length === 0) return [];
+  return withImap(config, async (client) => {
     const { lock, path } = await lockMailbox(client, folder);
     try {
-      const msg = await client.fetchOne(
-        String(uid),
-        { uid: true, flags: true, envelope: true, source: true, headers: true },
-        { uid: true },
-      );
-      if (!msg || !msg.source) return null;
-      const parsed = await simpleParser(msg.source);
-      const headers: Record<string, string> = {};
-      for (const [key, value] of Object.entries(parsed.headers || {})) {
-        headers[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
+      const messages: MailMessage[] = [];
+      for await (const msg of client.fetch(unique, { uid: true, flags: true, source: true }, { uid: true })) {
+        if (!msg.source) continue;
+        messages.push(await messageFromSource(msg.source, msg.uid, path, msg.flags, meta));
       }
-
-      return {
-        uid,
-        remoteId: String(uid),
-        id: `${meta.identityId}:${path}:${uid}`,
-        identityId: meta.identityId,
-        identityEmail: meta.identityEmail,
-        identityColor: meta.identityColor,
-        folder: path,
-        subject: parsed.subject || "(no subject)",
-        snippet: (parsed.text || "").slice(0, 140),
-        from: toAddress(parsed.from?.value?.[0]) || { address: "unknown" },
-        to: toAddressList(parsed.to),
-        cc: toAddressList(parsed.cc),
-        bcc: toAddressList(parsed.bcc),
-        date: (parsed.date || new Date()).toISOString(),
-        seen: msg.flags?.has("\\Seen") ?? false,
-        flagged: msg.flags?.has("\\Flagged") ?? false,
-        answered: msg.flags?.has("\\Answered") ?? false,
-        hasAttachments: (parsed.attachments?.length || 0) > 0,
-        html: typeof parsed.html === "string" ? parsed.html : undefined,
-        text: parsed.text || undefined,
-        attachments: (parsed.attachments || []).map((a) => ({
-          filename: a.filename || "attachment",
-          contentType: a.contentType,
-          size: a.size,
-        })),
-        headers,
-        messageId: parsed.messageId,
-        inReplyTo: parsed.inReplyTo,
-        references: parsed.references
-          ? Array.isArray(parsed.references)
-            ? parsed.references
-            : [parsed.references]
-          : undefined,
-      };
+      return messages.sort((a, b) => +new Date(a.date) - +new Date(b.date));
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
 }
 
 export async function setFlags(
@@ -287,9 +400,7 @@ export async function setFlags(
   uid: number,
   flags: { seen?: boolean; flagged?: boolean },
 ) {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  return withImap(config, async (client) => {
     const { lock } = await lockMailbox(client, folder);
     try {
       if (flags.seen === true) await client.messageFlagsAdd({ uid }, ["\\Seen"], { uid: true });
@@ -300,9 +411,7 @@ export async function setFlags(
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
 }
 
 export async function moveMessage(
@@ -311,9 +420,7 @@ export async function moveMessage(
   uid: number,
   destination: string,
 ) {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  return withImap(config, async (client) => {
     const folders = (await client.list()).map((box) => boxToFolder(box));
     const source = resolveFolderPath(folder, folders);
     const target = resolveFolderPath(destination, folders);
@@ -323,9 +430,7 @@ export async function moveMessage(
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
 }
 
 export async function appendMessage(
@@ -334,14 +439,10 @@ export async function appendMessage(
   raw: string | Buffer,
   flags: string[] = ["\\Seen"],
 ) {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  return withImap(config, async (client) => {
     const folders = (await client.list()).map((box) => boxToFolder(box));
     await client.append(resolveFolderPath(folder, folders), raw, flags);
-  } finally {
-    await client.logout();
-  }
+  });
 }
 
 export async function searchMessages(
@@ -350,9 +451,7 @@ export async function searchMessages(
   query: string,
   meta: { identityId: string; identityEmail?: string; identityColor?: string },
 ): Promise<MailMessageSummary[]> {
-  const client = clientFromConfig(config);
-  await client.connect();
-  try {
+  return withImap(config, async (client) => {
     const { lock, path } = await lockMailbox(client, folder);
     try {
       const uids = await client.search({ body: query }, { uid: true });
@@ -361,10 +460,11 @@ export async function searchMessages(
       const messages: MailMessageSummary[] = [];
       for await (const msg of client.fetch(
         limited,
-        { uid: true, flags: true, envelope: true, headers: ROUTING_HEADER_FIELDS },
+        { uid: true, flags: true, envelope: true, headers: LIST_HEADER_FIELDS },
         { uid: true },
       )) {
         const from = msg.envelope?.from?.[0];
+        const headers = routingHeaders(msg.headers);
         messages.push({
           uid: msg.uid,
           remoteId: String(msg.uid),
@@ -381,7 +481,8 @@ export async function searchMessages(
           },
           to: envelopeAddresses(msg.envelope?.to),
           cc: envelopeAddresses(msg.envelope?.cc),
-          headers: routingHeaders(msg.headers),
+          headers,
+          ...threadFields(msg.envelope, headers),
           date: (msg.envelope?.date || new Date()).toISOString(),
           seen: msg.flags?.has("\\Seen") ?? false,
           flagged: msg.flags?.has("\\Flagged") ?? false,
@@ -393,9 +494,7 @@ export async function searchMessages(
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
 }
 
 export async function getQuota(config: ConnectionConfig) {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { jsonError } from "@/lib/api";
+import { allowsPublicSignup } from "@/lib/hosting";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -11,6 +12,10 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!allowsPublicSignup()) {
+    return jsonError("Account creation is disabled on this server", 403);
+  }
+
   const body = schema.safeParse(await request.json());
   if (!body.success) {
     return jsonError(body.error.issues[0]?.message || "Invalid input");

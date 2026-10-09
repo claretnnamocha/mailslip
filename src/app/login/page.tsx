@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
+import { useHostingMode } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [zitadelEnabled, setZitadelEnabled] = useState(false);
+  const allowSignup = useHostingMode() === "cloud";
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -96,12 +98,14 @@ export default function LoginPage() {
           )}
         </div>
 
-        <p className="mt-6 text-center text-[14px] text-text-2">
-          New to Mailslip?{" "}
-          <Link href="/register" className="font-medium text-accent">
-            Create an account
-          </Link>
-        </p>
+        {allowSignup && (
+          <p className="mt-6 text-center text-[14px] text-text-2">
+            New to Mailslip?{" "}
+            <Link href="/register" className="font-medium text-accent">
+              Create an account
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

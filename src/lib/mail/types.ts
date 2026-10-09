@@ -31,6 +31,11 @@ export type MailMessageSummary = {
   flagged: boolean;
   answered: boolean;
   hasAttachments: boolean;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  /** Server thread id, when the protocol provides one (JMAP). */
+  threadId?: string;
 };
 
 export type MailMessage = MailMessageSummary & {

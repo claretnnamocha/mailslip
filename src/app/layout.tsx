@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { hostingMode } from "@/lib/hosting";
 import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers hosting={hostingMode()}>{children}</Providers>
       </body>
     </html>
   );

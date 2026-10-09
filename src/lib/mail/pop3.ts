@@ -166,6 +166,13 @@ export async function listPop3Messages(
           address: a.address || "",
         })),
         headers,
+        messageId: parsed.messageId,
+        inReplyTo: parsed.inReplyTo,
+        references: parsed.references
+          ? Array.isArray(parsed.references)
+            ? parsed.references
+            : [parsed.references]
+          : undefined,
         date: (parsed.date || new Date()).toISOString(),
         seen: true,
         flagged: false,

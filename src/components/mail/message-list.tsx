@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, formatMessageDate, initials } from "@/lib/utils";
 import { buildFolderTree, folderRole, groupedUnseen, type FolderNode } from "@/lib/mail/folder-map";
+import { displaySubject, groupThreads, type MailThread } from "@/lib/mail/thread";
 import type { MailFolder, MailMessageSummary } from "@/lib/mail/types";
 import {
   ArchiveIcon,
@@ -127,13 +128,13 @@ export function MessageList({
 
         {searching &&
           !loadingList &&
-          messages.map((message) => (
+          groupThreads(messages).map((thread) => (
             <MessageRow
-              key={message.id}
-              message={message}
-              active={selectedId === message.id}
+              key={thread.id}
+              thread={thread}
+              active={thread.messages.some((message) => message.id === selectedId)}
               compact={compact}
-              onClick={() => openMessage(message)}
+              onClick={() => openMessage(thread.latest)}
             />
           ))}
 
@@ -241,14 +242,14 @@ function FolderBranch({
           ))}
           {selectable && loading && <ListSkeleton />}
           {selectable &&
-            mail?.map((message) => (
+            groupThreads(mail || []).map((thread) => (
               <MessageRow
-                key={message.id}
-                message={message}
-                active={selectedId === message.id}
+                key={thread.id}
+                thread={thread}
+                active={thread.messages.some((message) => message.id === selectedId)}
                 compact={compact}
                 indent={depth + 1}
-                onClick={() => onOpenMessage(message)}
+                onClick={() => onOpenMessage(thread.latest)}
               />
             ))}
           {selectable && mail && mail.length === 0 && !loading && (
@@ -266,18 +267,21 @@ function FolderBranch({
 }
 
 function MessageRow({
-  message,
+  thread,
   active,
   compact,
   indent = 0,
   onClick,
 }: {
-  message: MailMessageSummary;
+  thread: MailThread<MailMessageSummary>;
   active: boolean;
   compact: boolean;
   indent?: number;
   onClick: () => void;
 }) {
+  const message = thread.latest;
+  const seen = thread.messages.every((item) => item.seen);
+  const count = thread.messages.length;
   return (
     <button
       type="button"
@@ -297,7 +301,7 @@ function MessageRow({
           <span
             className={cn(
               "truncate text-[13px]",
-              message.seen ? "font-medium text-text" : "font-semibold text-text",
+              seen ? "font-medium text-text" : "font-semibold text-text",
             )}
           >
             {message.from.name || message.from.address}
@@ -310,17 +314,26 @@ function MessageRow({
           <span
             className={cn(
               "truncate text-[12.5px]",
-              message.seen ? "text-text-2" : "font-medium text-text",
+              seen ? "text-text-2" : "font-medium text-text",
             )}
           >
-            {message.subject}
+            {displaySubject(message.subject)}
           </span>
-          {!message.seen && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+          {count > 1 && (
+            <span className="shrink-0 rounded-full bg-border-strong px-1.5 text-[11px] font-semibold tabular-nums text-text-2">
+              {count}
+            </span>
+          )}
+          {!seen && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
         </div>
         <div className="mt-0.5 flex items-center gap-2">
           <span className="truncate text-[12px] text-text-3">{message.snippet}</span>
-          {message.hasAttachments && <PaperclipIcon size={12} className="shrink-0 text-text-3" />}
-          {message.flagged && <StarIcon size={12} className="shrink-0 text-accent" />}
+          {thread.messages.some((item) => item.hasAttachments) && (
+            <PaperclipIcon size={12} className="shrink-0 text-text-3" />
+          )}
+          {thread.messages.some((item) => item.flagged) && (
+            <StarIcon size={12} className="shrink-0 text-accent" />
+          )}
         </div>
       </div>
     </button>
