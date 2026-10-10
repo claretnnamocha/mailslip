@@ -1,14 +1,14 @@
 /**
  * Cloudflare Worker — SaaS fallback origin for Mailslip (Free plan).
  *
- * Workers cannot override the Host header on fetch() (it always matches the URL).
- * Railway only serves Host: mailslip.uselinqr.io, so we fetch that hostname and
- * pass the customer domain as X-Mailslip-Host (Mailslip reads it for tenancy).
+ * Workers cannot override Host on fetch() (URL hostname wins). Railway only
+ * serves Host: mailslip.uselinqr.io, so we fetch that URL and pass the customer
+ * domain as X-Mailslip-Host (Mailslip tenancy reads it).
  *
  * Setup (once):
- * 1. Paste this script → Deploy
+ * 1. Paste → Deploy; optional var ORIGIN_HOST=mailslip.uselinqr.io
  * 2. Domains → Add Domain → saas-origin.uselinqr.io
- * 3. Custom Hostnames → Fallback Origin → saas-origin.uselinqr.io
+ * 3. Custom Hostnames → Fallback Origin → saas-origin.uselinqr.io (Active)
  */
 
 const PLATFORM_ORIGIN = "https://mailslip.uselinqr.io";

@@ -6,9 +6,14 @@ import { getPrimaryWorkspace, isAdminRole } from "@/lib/identities";
 import { platformHosts } from "@/lib/tenant";
 import { cnameTarget } from "@/lib/cname-target";
 import {
+  normalizePlan,
+  workspaceAllowsCustomDomain,
+} from "@/lib/billing";
+import {
   cloudflareSaasConfigured,
   deleteCustomHostname,
   ensureCustomHostname,
+  getCustomHostnameStatus,
 } from "@/lib/cloudflare-saas";
 
 function normalizeDomain(value: string) {
@@ -20,26 +25,37 @@ function normalizeDomain(value: string) {
     .replace(/:\d+$/, "");
 }
 
-function workspacePayload(
+async function workspacePayload(
   workspace: {
     id: string;
     name: string;
     brandName: string | null;
     customDomain: string | null;
     mode: string;
+    plan: string;
   },
   role: string,
 ) {
+  const plan = normalizePlan(workspace.plan);
+  const allowsByod = workspaceAllowsCustomDomain(workspace);
+  const domainStatus =
+    workspace.customDomain && cloudflareSaasConfigured()
+      ? await getCustomHostnameStatus(workspace.customDomain)
+      : null;
+
   return {
     id: workspace.id,
     name: workspace.name,
     brandName: workspace.brandName,
     customDomain: workspace.customDomain,
     mode: workspace.mode,
+    plan,
+    allowsCustomDomain: allowsByod,
     role,
     platformHosts: platformHosts(),
     cnameTarget: cnameTarget(),
     cloudflareSaas: cloudflareSaasConfigured(),
+    domainStatus,
   };
 }
 
@@ -50,7 +66,9 @@ export async function GET() {
   const membership = await getPrimaryWorkspace(authResult.userId);
   if (!membership) return jsonError("No workspace", 404);
 
-  return NextResponse.json(workspacePayload(membership.workspace, membership.role));
+  return NextResponse.json(
+    await workspacePayload(membership.workspace, membership.role),
+  );
 }
 
 const patchSchema = z.object({
@@ -88,6 +106,14 @@ export async function PATCH(request: Request) {
       data.customDomain = null;
       data.mode = "cloud";
     } else {
+      const attachingNew =
+        domain !== previousDomain && !workspaceAllowsCustomDomain(membership.workspace);
+      if (attachingNew) {
+        return jsonError(
+          "Custom domains are a paid feature. Upgrade to attach your own domain.",
+          402,
+        );
+      }
       if (!domain.includes(".") || domain.includes(" ")) {
         return jsonError("Enter a valid hostname, e.g. mail.acme.com");
       }
@@ -127,5 +153,5 @@ export async function PATCH(request: Request) {
     data,
   });
 
-  return NextResponse.json(workspacePayload(workspace, membership.role));
+  return NextResponse.json(await workspacePayload(workspace, membership.role));
 }

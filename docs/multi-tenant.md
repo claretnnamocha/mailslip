@@ -1,54 +1,61 @@
 # Platform entry + custom domains
 
-One Mailslip deploy serves everyone.
+One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 
-## Two hosts
+## Product rules
 
-| Host | Experience |
-| --- | --- |
-| **Platform entry** (`mailslip.uselinqr.io`) | General Mailslip: landing, signup, create a workspace |
-| **Custom domain** (`gbese.fun`, `mail.acme.com`) | Self-hosted style: sign-in only, your brand, that workspace only |
+| Tier | Host | Tenant key |
+| --- | --- | --- |
+| **Free** | Static `mailslip.uselinqr.io` only (no per-user slug) | Session / login |
+| **Paid** | Customer BYOD (`alice.com`, `gbese.fun`) | `Host` → workspace |
 
-## Per workspace (DNS + Mailslip only)
+Customers **CNAME** to `MAILSLIP_CNAME_TARGET` (e.g. `cname.mailslip.uselinqr.io`).
 
-Customers **never** CNAME to the platform entry. That causes Cloudflare→Cloudflare failures.
+**Never** CNAME customers to Railway or to `mailslip.uselinqr.io`.
 
-1. **DNS** — CNAME the customer hostname to the **SaaS CNAME target** (proxied), e.g. `gbese.fun` → `cname.mailslip.uselinqr.io`.
-2. **Mailslip** — **Settings → Workspace**: set brand + custom domain, save (registers the hostname on Cloudflare when SaaS env is set).
+## Per workspace (paid — DNS + Mailslip only)
+
+1. **DNS** — CNAME customer hostname → `cname.mailslip.uselinqr.io` (proxied OK).
+2. **Mailslip** — **Settings → Workspace**: brand + custom domain → Save  
+   (registers Cloudflare custom hostname when `CLOUDFLARE_*` is set; requires paid plan).
 3. Open `https://your-domain/login`.
-
-No per-domain Railway setup. Cloudflare for SaaS terminates HTTPS for each custom hostname and forwards to your fallback origin; Mailslip picks the workspace from the `Host` header.
 
 ## Platform env (once)
 
 ```bash
 NEXTAUTH_URL=https://mailslip.uselinqr.io
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
-# Customers CNAME here — not the platform entry
 MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
+
+# Until Stripe: mark paid workspaces
+# MAILSLIP_PAID_WORKSPACE_IDS=cuid1,cuid2
+# Or Workspace.plan = "paid" in the DB
+# MAILSLIP_BYOD_ALLOW_ALL=1  # dev only
 ```
 
 ## Operator setup (Cloudflare for SaaS, once)
 
-On the **platform** Cloudflare zone (e.g. `uselinqr.io`):
+On zone **uselinqr.io**:
 
 1. Enable **Cloudflare for SaaS** / Custom Hostnames.
-2. Deploy the **SaaS origin Worker** ([`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js)) on custom domain `saas-origin.uselinqr.io`.  
-   Railway rejects unknown `Host` headers (`Application not found`). Host-header Origin Rules are Enterprise-only, so the Worker rewrites `Host` → `mailslip.uselinqr.io` and sets `X-Forwarded-Host` to the customer domain.
-3. Set **Fallback Origin** to `saas-origin.uselinqr.io` (Active).
-4. Create a proxied DNS CNAME target, e.g. `cname.mailslip` → `mailslip.uselinqr.io`.
-5. Put `MAILSLIP_CNAME_TARGET`, `CLOUDFLARE_ZONE_ID`, and `CLOUDFLARE_API_TOKEN` on the deploy.
+2. Deploy [`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js) on **`saas-origin.uselinqr.io`**.  
+   Railway only accepts `Host: mailslip.uselinqr.io`. Workers cannot rewrite `Host` on `fetch`, so the Worker proxies to `mailslip.uselinqr.io` and sets **`X-Mailslip-Host`** to the customer domain (Mailslip reads that for tenancy).
+3. **Fallback Origin** = `saas-origin.uselinqr.io` (Active).
+4. Proxied DNS: `cname.mailslip` → `mailslip.uselinqr.io`.
+5. Railway: add **only** `mailslip.uselinqr.io` as a custom domain (one service). Confirm https://mailslip.uselinqr.io works.
 
-Customer DNS stays: `CNAME your-domain → cname.mailslip.uselinqr.io` (proxied on their side is fine). No per-domain Railway setup.
+## Why “train has not arrived” / Application not found
 
-## Settings fields
+DNS reached Railway with a customer `Host` that is not provisioned there. Fix = Cloudflare for SaaS + origin Worker — **not** Railway Custom Domain × N.
+
+## Settings
 
 **Settings → Workspace**
 
-- Workspace name  
-- Brand name (tab titles on the custom domain)  
-- Custom domain  
+- Workspace name / brand  
+- Custom domain (paid only)  
+- Cloudflare hostname + certificate status when SaaS is configured  
 
-Saving a custom domain makes that host self-hosted (no public signup). Clearing it returns the workspace to platform-only access and removes the Cloudflare custom hostname when SaaS is configured.
+Saving a custom domain sets mode to self-hosted (no public signup). Clearing it returns platform-only access and removes the Cloudflare custom hostname.

@@ -6,15 +6,25 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useWorkspaceRole } from "@/lib/use-workspace-role";
 
+type DomainStatus = {
+  hostname: string;
+  hostnameStatus: string | null;
+  certificateStatus: string | null;
+  ready: boolean;
+};
+
 type WorkspaceInfo = {
   id: string;
   name: string;
   brandName?: string | null;
   customDomain?: string | null;
   mode: string;
+  plan: string;
+  allowsCustomDomain: boolean;
   platformHosts: string[];
   cnameTarget: string;
   cloudflareSaas: boolean;
+  domainStatus?: DomainStatus | null;
 };
 
 export default function WorkspaceSettingsPage() {
@@ -27,6 +37,21 @@ export default function WorkspaceSettingsPage() {
   const [platformHosts, setPlatformHosts] = useState<string[]>([]);
   const [cname, setCname] = useState("cname.mailslip.uselinqr.io");
   const [saas, setSaas] = useState(false);
+  const [plan, setPlan] = useState("free");
+  const [allowsByod, setAllowsByod] = useState(false);
+  const [domainStatus, setDomainStatus] = useState<DomainStatus | null>(null);
+
+  function apply(data: WorkspaceInfo) {
+    setName(data.name || "");
+    setBrandName(data.brandName || "");
+    setCustomDomain(data.customDomain || "");
+    setPlatformHosts(data.platformHosts || []);
+    setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
+    setSaas(Boolean(data.cloudflareSaas));
+    setPlan(data.plan || "free");
+    setAllowsByod(Boolean(data.allowsCustomDomain));
+    setDomainStatus(data.domainStatus || null);
+  }
 
   async function load() {
     setLoading(true);
@@ -36,13 +61,7 @@ export default function WorkspaceSettingsPage() {
       toast.error("Could not load workspace");
       return;
     }
-    const data = (await res.json()) as WorkspaceInfo;
-    setName(data.name || "");
-    setBrandName(data.brandName || "");
-    setCustomDomain(data.customDomain || "");
-    setPlatformHosts(data.platformHosts || []);
-    setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
-    setSaas(Boolean(data.cloudflareSaas));
+    apply((await res.json()) as WorkspaceInfo);
   }
 
   useEffect(() => {
@@ -64,11 +83,7 @@ export default function WorkspaceSettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save");
-      setName(data.name || "");
-      setBrandName(data.brandName || "");
-      setCustomDomain(data.customDomain || "");
-      if (data.cnameTarget) setCname(data.cnameTarget);
-      setSaas(Boolean(data.cloudflareSaas));
+      apply(data as WorkspaceInfo);
       toast.success(
         data.customDomain
           ? `Saved — CNAME your domain to ${data.cnameTarget || cname}, then open it to sign in`
@@ -102,13 +117,14 @@ export default function WorkspaceSettingsPage() {
   }
 
   const entry = platformHosts[0] || "mailslip.uselinqr.io";
+  const byodLocked = !allowsByod;
 
   return (
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Workspace</h1>
       <p className="mt-2 max-w-xl text-[15px] text-text-2">
-        Everyone signs up on the Mailslip entry host. Attach your own domain here for a private,
-        self-hosted-style experience (sign-in only, your brand).
+        Free workspaces use the platform entry only. Paid workspaces can attach a custom domain
+        (sign-in only, your brand) via DNS + this screen — never Railway.
       </p>
 
       <form
@@ -133,20 +149,50 @@ export default function WorkspaceSettingsPage() {
             onChange={(e) => setCustomDomain(e.target.value)}
             placeholder="mail.acme.com"
           />
-          <p className="mt-1.5 text-[12px] text-text-3">
-            In DNS, CNAME this hostname to <span className="mono">{cname}</span> (proxied). Do{" "}
-            <span className="font-medium text-text">not</span> point at the platform entry. Save here
-            after DNS — leave blank for platform-only access.
-          </p>
+          {byodLocked ? (
+            <p className="mt-1.5 text-[12px] text-text-3">
+              Custom domains are paid. Plan: <span className="mono">{plan}</span>. Upgrade to attach
+              your own hostname (CNAME to <span className="mono">{cname}</span>).
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[12px] text-text-3">
+              In DNS, CNAME this hostname to <span className="mono">{cname}</span> (proxied). Do{" "}
+              <span className="font-medium text-text">not</span> point at the platform entry or
+              Railway. Save here after DNS — leave blank for platform-only access.
+            </p>
+          )}
         </div>
+        {domainStatus ? (
+          <div className="rounded-[11px] border border-border bg-surface-2 px-4 py-3 text-[13px] text-text-2">
+            <p className="font-medium text-text">Cloudflare status</p>
+            <p className="mt-1 mono text-[12px]">{domainStatus.hostname}</p>
+            <p className="mt-2">
+              Hostname:{" "}
+              <span className="font-medium text-text">
+                {domainStatus.hostnameStatus || "not registered"}
+              </span>
+              {" · "}
+              Certificate:{" "}
+              <span className="font-medium text-text">
+                {domainStatus.certificateStatus || "—"}
+              </span>
+              {domainStatus.ready ? " · Ready" : ""}
+            </p>
+          </div>
+        ) : null}
         <div className="rounded-[11px] border border-border bg-surface-2 px-4 py-3 text-[13px] text-text-2">
           <p>
+            <span className="font-medium text-text">Plan:</span>{" "}
+            <span className="mono">{plan}</span>
+            {allowsByod ? " (BYOD enabled)" : " (platform host only)"}
+          </p>
+          <p className="mt-2">
             <span className="font-medium text-text">Platform entry:</span>{" "}
             <span className="mono">{entry}</span> — landing, signup, team login.
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">DNS target:</span>{" "}
-            <span className="mono">{cname}</span> — customers CNAME here only.
+            <span className="mono">{cname}</span> — paid customers CNAME here only.
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Per workspace:</span> DNS CNAME + this screen.

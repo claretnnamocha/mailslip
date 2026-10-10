@@ -111,3 +111,35 @@ export async function deleteCustomHostname(hostname: string) {
   if (!deleted.ok) return { ok: false as const, error: deleted.error };
   return { ok: true as const, deleted: true };
 }
+
+export type CustomHostnameStatus = {
+  hostname: string;
+  hostnameStatus: string | null;
+  certificateStatus: string | null;
+  ready: boolean;
+};
+
+/** DNS / SSL status for Settings UI. */
+export async function getCustomHostnameStatus(
+  hostname: string,
+): Promise<CustomHostnameStatus | null> {
+  if (!configured()) return null;
+  const existing = await findByHostname(hostname);
+  if (!existing.ok || !existing.data?.[0]) {
+    return {
+      hostname,
+      hostnameStatus: null,
+      certificateStatus: null,
+      ready: false,
+    };
+  }
+  const row = existing.data[0];
+  const hostnameStatus = row.status || null;
+  const certificateStatus = row.ssl?.status || null;
+  return {
+    hostname: row.hostname,
+    hostnameStatus,
+    certificateStatus,
+    ready: hostnameStatus === "active" && certificateStatus === "active",
+  };
+}

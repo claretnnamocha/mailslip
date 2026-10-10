@@ -96,6 +96,8 @@ model Workspace {
   customDomain String? @unique
   /// Browser titles / UI brand, e.g. "Linqr Mail"
   brandName String?
+  /// free = platform host only; paid = BYOD custom domain (Cloudflare for SaaS)
+  plan      String   @default("free")
   /// cloud = public signup on this host; self-hosted = sign-in only
   mode      String   @default("self-hosted")
   createdAt DateTime @default(now())
