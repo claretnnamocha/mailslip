@@ -123,8 +123,8 @@ export default function WorkspaceSettingsPage() {
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Workspace</h1>
       <p className="mt-2 max-w-xl text-[15px] text-text-2">
-        Free workspaces use the platform entry only. Paid workspaces can attach a custom domain
-        (sign-in only, your brand) via DNS + this screen — never Railway.
+        Attach a custom domain for a private, self-hosted-style experience (sign-in only, your
+        brand) via DNS + this screen — never Railway.
       </p>
 
       <form

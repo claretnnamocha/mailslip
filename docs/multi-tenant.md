@@ -29,11 +29,12 @@ MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
 
-# Until Stripe: mark paid workspaces
+# BYOD allowed for all by default. Enforce paid later with:
+# MAILSLIP_BYOD_REQUIRE_PAID=1
 # MAILSLIP_PAID_WORKSPACE_IDS=cuid1,cuid2
-# Or Workspace.plan = "paid" in the DB
-# MAILSLIP_BYOD_ALLOW_ALL=1  # dev only
+# Or Workspace.plan = "paid"
 ```
+
 
 ## Operator setup (Cloudflare for SaaS, once)
 
