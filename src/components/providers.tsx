@@ -13,14 +13,17 @@ export function useHostingMode() {
   return useContext(HostingContext);
 }
 
-/** Clears the cookie when the JWT outlives a deleted account. */
+/**
+ * After a Node session refresh finds the user row gone, Auth returns no id.
+ * Wait until the session has finished loading so we don't race a fresh login.
+ */
 function SessionGuard({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
 
   useEffect(() => {
-    if (status === "authenticated" && !session?.user?.id) {
-      void signOut({ callbackUrl: "/login" });
-    }
+    if (status !== "authenticated") return;
+    if (session?.user?.id) return;
+    void signOut({ callbackUrl: "/login" });
   }, [status, session?.user?.id]);
 
   return <>{children}</>;

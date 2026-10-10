@@ -188,14 +188,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return token;
       }
 
-      // Drop sessions for deleted accounts (admin remove or self-delete).
-      if (token.userId) {
+      // Only verify against the DB in Node. Middleware runs on Edge, where Prisma
+      // is unavailable — checking here was immediately invalidating every session.
+      if (token.userId && process.env.NEXT_RUNTIME !== "edge") {
         const existing = await prisma.user.findUnique({
           where: { id: token.userId as string },
           select: { id: true, mustChangePassword: true },
         });
         if (!existing) {
-          return { ...token, userId: undefined, mustChangePassword: false, email: undefined };
+          return {
+            ...token,
+            userId: undefined,
+            sub: undefined,
+            mustChangePassword: false,
+            email: undefined,
+            name: undefined,
+            picture: undefined,
+          };
         }
         token.mustChangePassword = existing.mustChangePassword;
       }
@@ -203,11 +212,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (!token.userId) {
+      const userId = (token.userId as string | undefined) || (token.sub as string | undefined);
+      if (!userId) {
         return { ...session, user: undefined };
       }
       if (session.user) {
-        session.user.id = token.userId as string;
+        session.user.id = userId;
         session.user.mustChangePassword = Boolean(token.mustChangePassword);
       }
       return session;
