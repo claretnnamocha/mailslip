@@ -7,6 +7,7 @@ import { LogoMark } from "@/components/brand/logo";
 import { useHostingMode } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { clientAuthRedirect } from "@/lib/auth-callback-url";
 
 export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boolean }) {
   const hosting = useHostingMode();
@@ -58,7 +59,7 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
       setError("Invalid email or password");
       return;
     }
-    window.location.href = res?.url || "/mail";
+    window.location.href = clientAuthRedirect(res?.url, "/mail");
   }
 
   const showSignup = allowSignup && allowSignupProp && hosting === "cloud";

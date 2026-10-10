@@ -6,6 +6,7 @@ import { signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { clientAuthRedirect } from "@/lib/auth-callback-url";
 
 export function RegisterForm() {
   const [name, setName] = useState("");
@@ -61,7 +62,7 @@ export function RegisterForm() {
         setLoading(false);
         return;
       }
-      window.location.href = signInRes?.url || "/onboarding";
+      window.location.href = clientAuthRedirect(signInRes?.url, "/onboarding");
     } catch {
       setError("Could not create account");
       setLoading(false);

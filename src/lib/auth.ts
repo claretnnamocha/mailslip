@@ -3,7 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-import { prepareAuthHostEnv, requestPublicOrigin } from "@/lib/public-url";
+import {
+  isInternalHost,
+  platformOrigin,
+  prepareAuthHostEnv,
+  requestPublicOrigin,
+} from "@/lib/public-url";
 
 prepareAuthHostEnv();
 
@@ -139,6 +144,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: { strategy: "jwt" },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      let base = baseUrl;
+      try {
+        if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
+      } catch {
+        base = platformOrigin();
+      }
+      if (url.startsWith("/")) return `${base}${url}`;
+      try {
+        const target = new URL(url);
+        if (isInternalHost(target.host)) {
+          return `${base}${target.pathname}${target.search}${target.hash}`;
+        }
+        if (target.origin === base || target.origin === baseUrl) return url;
+      } catch {
+        /* fall through */
+      }
+      return base;
+    },
     async jwt({ token, user, account, profile, trigger, session }) {
       if (trigger === "update" && session?.mustChangePassword === false) {
         token.mustChangePassword = false;
