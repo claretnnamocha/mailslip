@@ -19,6 +19,12 @@ enum IdentityType {
   DOMAIN_ADDRESS
 }
 
+/// SHARED: workspace admins can manage/assign. PERSONAL: only the owner profile.
+enum IdentityAccess {
+  SHARED
+  PERSONAL
+}
+
 enum IncomingProtocol {
   IMAP
   POP3
@@ -84,6 +90,14 @@ model User {
 model Workspace {
   id        String   @id @default(cuid())
   name      String
+  /// Platform subdomain: {slug}.{MAILSLIP_BASE_DOMAIN}
+  slug      String?  @unique
+  /// Optional vanity host, e.g. mail.acme.com (CNAME to the app)
+  customDomain String? @unique
+  /// Browser titles / UI brand, e.g. "Linqr Mail"
+  brandName String?
+  /// cloud = public signup on this host; self-hosted = sign-in only
+  mode      String   @default("self-hosted")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -110,6 +124,7 @@ model MailIdentity {
   workspaceId      String
   ownerUserId      String?
   type             IdentityType     @default(OWN_MAILBOX)
+  access           IdentityAccess   @default(SHARED)
   email            String
   displayName      String?
   color            String           @default("#BE7C5E")

@@ -12,7 +12,8 @@ const sections = [
   { href: "/settings/signatures", label: "Signatures" },
   { href: "/settings/filters", label: "Filters & rules" },
   { href: "/settings/team", label: "Team" },
-  { href: "/settings/domains", label: "Domain" },
+  { href: "/settings/workspace", label: "Workspace" },
+  { href: "/settings/domains", label: "Mail domain" },
   { href: "/settings/notifications", label: "Notifications" },
   { href: "/settings/appearance", label: "Appearance" },
   { href: "/settings/shortcuts", label: "Keyboard shortcuts" },
@@ -25,7 +26,7 @@ const sections = [
   { href: "/settings/danger", label: "Danger zone" },
 ];
 
-const adminOnly = new Set(["/settings/team", "/settings/domains"]);
+const adminOnly = new Set(["/settings/team", "/settings/workspace", "/settings/domains"]);
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

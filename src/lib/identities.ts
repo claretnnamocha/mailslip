@@ -13,6 +13,25 @@ export async function getSessionUser(userId: string) {
 }
 
 export async function getPrimaryWorkspace(userId: string) {
+  try {
+    const { getRequestHostContext } = await import("@/lib/tenant");
+    const ctx = await getRequestHostContext();
+
+    // Custom domain → that workspace only (self-hosted style).
+    if (ctx.kind === "tenant") {
+      if (!ctx.tenant) return null;
+      return prisma.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: { workspaceId: ctx.tenant.id, userId },
+        },
+        include: { workspace: true },
+      });
+    }
+    // Platform entry → user's own workspace (first membership).
+  } catch {
+    /* headers() unavailable outside a request — fall through */
+  }
+
   const membership = await prisma.workspaceMember.findFirst({
     where: { userId },
     include: { workspace: true },
@@ -26,6 +45,7 @@ export async function getPrimaryWorkspace(userId: string) {
   const workspace = await prisma.workspace.create({
     data: {
       name: `${user.name || user.email.split("@")[0]}'s workspace`,
+      mode: "cloud",
       members: { create: { userId: user.id, role: "OWNER" } },
     },
   });
@@ -60,10 +80,12 @@ export async function syncMemberIdentities(
   identityIds: string[],
 ) {
   const identities = await prisma.mailIdentity.findMany({ where: { workspaceId } });
-  const valid = new Set(identities.map((identity) => identity.id));
+  // Personal mailboxes cannot be assigned to or controlled by other profiles.
+  const assignable = identities.filter((identity) => identity.access !== "PERSONAL");
+  const valid = new Set(assignable.map((identity) => identity.id));
   const wanted = new Set(identityIds.filter((id) => valid.has(id)));
 
-  for (const identity of identities) {
+  for (const identity of assignable) {
     const assigned = wanted.has(identity.id);
     if (assigned) {
       await prisma.identityGrant.upsert({
@@ -91,14 +113,21 @@ export async function listAccessibleIdentities(userId: string) {
   if (!membership) return [];
 
   if (isAdminRole(membership.role)) {
+    // Admins see shared workspace mailboxes, plus their own personal ones only.
     return prisma.mailIdentity.findMany({
-      where: { workspaceId: membership.workspaceId },
+      where: {
+        workspaceId: membership.workspaceId,
+        OR: [{ access: "SHARED" }, { ownerUserId: userId }],
+      },
       orderBy: { createdAt: "asc" },
     });
   }
 
   const grants = await prisma.identityGrant.findMany({
-    where: { userId },
+    where: {
+      userId,
+      identity: { workspaceId: membership.workspaceId, access: "SHARED" },
+    },
     include: { identity: true },
   });
 
@@ -124,6 +153,11 @@ export async function canAccessIdentity(
   });
   if (!identity) return null;
 
+  if (identity.access === "PERSONAL") {
+    if (identity.ownerUserId !== userId) return null;
+    return { identity, membership, permission: "SEND_AND_READ" };
+  }
+
   if (isAdminRole(membership.role) || identity.ownerUserId === userId) {
     return { identity, membership, permission: "SEND_AND_READ" };
   }
@@ -133,6 +167,18 @@ export async function canAccessIdentity(
   });
   if (!grant) return null;
   return { identity, membership, permission: grant.permission };
+}
+
+/** Who may disconnect or change access on this identity. */
+export function canManageIdentity(
+  userId: string,
+  role: WorkspaceRole,
+  identity: Pick<MailIdentity, "access" | "ownerUserId">,
+) {
+  if (identity.access === "PERSONAL") {
+    return identity.ownerUserId === userId;
+  }
+  return isAdminRole(role) || identity.ownerUserId === userId;
 }
 
 export function identityToConfig(identity: MailIdentity): ConnectionConfig | null {

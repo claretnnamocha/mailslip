@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
-import { brandName, hostingMode, rootTitleMetadata } from "@/lib/hosting";
+import { resolveHosting, rootTitleMetadata } from "@/lib/hosting";
 import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-/** Hosting/vendor env must be read per request, not baked at build. */
+/** Hosting/vendor/tenant must be read per request, not baked at build. */
 export const dynamic = "force-dynamic";
 
-export function generateMetadata(): Metadata {
-  const brand = brandName();
+export async function generateMetadata(): Promise<Metadata> {
+  const { brand } = await resolveHosting();
   return {
     metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
-    title: rootTitleMetadata(),
+    title: rootTitleMetadata(brand),
     description:
       "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",
     openGraph: {
@@ -37,7 +37,8 @@ export function generateMetadata(): Metadata {
   };
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const { mode, brand } = await resolveHosting();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -46,7 +47,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
       >
-        <Providers hosting={hostingMode()}>{children}</Providers>
+        <Providers hosting={mode} brand={brand}>
+          {children}
+        </Providers>
       </body>
     </html>
   );

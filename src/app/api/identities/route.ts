@@ -19,6 +19,8 @@ export async function GET() {
       displayName: i.displayName,
       color: i.color,
       type: i.type,
+      access: i.access,
+      ownerUserId: i.ownerUserId,
       connected: i.connected,
       incomingProtocol: i.incomingProtocol,
       spfOk: i.spfOk,
@@ -51,6 +53,8 @@ const createSchema = z.object({
   test: z.boolean().optional(),
   color: z.string().optional(),
   assignUserId: z.string().optional(),
+  /** PERSONAL: only the owner profile can use or manage this mailbox. */
+  access: z.enum(["SHARED", "PERSONAL"]).default("SHARED"),
 });
 
 export async function POST(request: Request) {
@@ -110,11 +114,14 @@ export async function POST(request: Request) {
     }
   }
 
+  const access = body.access || "SHARED";
+
   const identity = await prisma.mailIdentity.create({
     data: {
       workspaceId: membership.workspaceId,
       ownerUserId,
       type: body.type || "OWN_MAILBOX",
+      access,
       email: body.email,
       displayName: body.displayName,
       color: body.color || "#BE7C5E",
@@ -144,7 +151,9 @@ export async function POST(request: Request) {
     },
   });
 
-  if (ownerUserId !== authResult.userId) {
+  // Shared mailboxes get an explicit grant for the assignee. Personal ones are
+  // owner-only — no grants, so other admins/members cannot control them.
+  if (access === "SHARED" && ownerUserId !== authResult.userId) {
     await prisma.identityGrant.create({
       data: {
         identityId: identity.id,

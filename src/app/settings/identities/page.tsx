@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { useDialog } from "@/components/dialog-provider";
 import { toast } from "sonner";
@@ -14,6 +15,8 @@ type Identity = {
   displayName?: string | null;
   color: string;
   type: string;
+  access: "SHARED" | "PERSONAL";
+  ownerUserId?: string | null;
   connected: boolean;
   spfOk?: boolean | null;
   dkimOk?: boolean | null;
@@ -23,8 +26,10 @@ type Identity = {
 
 export default function IdentitiesSettingsPage() {
   const [identities, setIdentities] = useState<Identity[]>([]);
+  const { data: session } = useSession();
   const { confirm } = useDialog();
   const { isAdmin } = useWorkspaceRole();
+  const userId = session?.user?.id;
 
   async function load() {
     const res = await fetch("/api/identities");
@@ -34,6 +39,35 @@ export default function IdentitiesSettingsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  function canManage(identity: Identity) {
+    if (identity.access === "PERSONAL") return identity.ownerUserId === userId;
+    return isAdmin || identity.ownerUserId === userId;
+  }
+
+  async function setAccess(identity: Identity, access: "SHARED" | "PERSONAL") {
+    if (access === "PERSONAL") {
+      const ok = await confirm({
+        title: "Make this mailbox personal?",
+        description:
+          "Only you will be able to use and manage it. Other admins and teammates lose access, and it can no longer be assigned.",
+        confirmLabel: "Make personal",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    const res = await fetch(`/api/identities/${identity.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access }),
+    });
+    if (!res.ok) {
+      toast.error("Could not update access");
+      return;
+    }
+    toast.success(access === "PERSONAL" ? "Mailbox is now personal" : "Mailbox is shared with the workspace");
+    load();
+  }
 
   async function disconnect(id: string) {
     const ok = await confirm({
@@ -60,8 +94,8 @@ export default function IdentitiesSettingsPage() {
           <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Mail identities</h1>
           <p className="mt-2 text-[15px] text-text-2">
             {isAdmin
-              ? "Mailboxes connected for this workspace. Assign one to a member from Team, or while connecting."
-              : "Mailboxes an admin has connected for you."}
+              ? "Shared mailboxes can be assigned to teammates. Personal ones stay with one profile only."
+              : "Mailboxes an admin has connected for you, plus any personal mailbox you own."}
           </p>
         </div>
         {isAdmin && (
@@ -93,8 +127,18 @@ export default function IdentitiesSettingsPage() {
                 <div>
                   <div className="font-semibold">{identity.displayName || identity.email}</div>
                   <div className="mono text-[13px] text-text-2">{identity.email}</div>
-                  <div className="mt-1 text-[12px] text-text-3">
-                    {identity.type.replaceAll("_", " ").toLowerCase()}
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-text-3">
+                    <span>{identity.type.replaceAll("_", " ").toLowerCase()}</span>
+                    <span
+                      className={cn(
+                        "rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+                        identity.access === "PERSONAL"
+                          ? "bg-accent-tint text-text"
+                          : "bg-hover text-text-2",
+                      )}
+                    >
+                      {identity.access === "PERSONAL" ? "Personal" : "Shared"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -135,8 +179,17 @@ export default function IdentitiesSettingsPage() {
                 </span>
               ))}
             </div>
-            {isAdmin && (
-              <div className="mt-4">
+            {canManage(identity) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {identity.access === "SHARED" ? (
+                  <Button size="sm" variant="secondary" onClick={() => setAccess(identity, "PERSONAL")}>
+                    Make personal
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setAccess(identity, "SHARED")}>
+                    Make shared
+                  </Button>
+                )}
                 <Button size="sm" variant="danger" onClick={() => disconnect(identity.id)}>
                   Disconnect
                 </Button>

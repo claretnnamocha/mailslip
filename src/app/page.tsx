@@ -1,18 +1,22 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { allowsPublicSignup } from "@/lib/hosting";
+import { resolveHosting } from "@/lib/hosting";
 import { absoluteBrandTitle } from "@/lib/page-meta";
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
-export const metadata = absoluteBrandTitle("Beautiful email, without switching providers");
+
+export async function generateMetadata() {
+  return absoluteBrandTitle("Beautiful email, without switching providers");
+}
 
 export default async function LandingPage() {
   const session = await auth();
   if (session?.user) redirect("/mail");
-  if (!allowsPublicSignup()) redirect("/login");
+  const { allowSignup } = await resolveHosting();
+  if (!allowSignup) redirect("/login");
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">

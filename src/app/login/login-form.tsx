@@ -12,6 +12,7 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
   const hosting = useHostingMode();
   // Prefer hiding until runtime confirms cloud — avoids a stale self-hosted flash of signup.
   const [allowSignup, setAllowSignup] = useState(false);
+  const [brand, setBrand] = useState("Mailslip");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,6 +26,7 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
       .then((data) => {
         if (cancelled || !data) return;
         setAllowSignup(Boolean(data.allowSignup) && data.mode === "cloud");
+        if (typeof data.brand === "string" && data.brand.trim()) setBrand(data.brand.trim());
       })
       .catch(() => {
         if (!cancelled) setAllowSignup(false);
@@ -120,7 +122,7 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
 
         {showSignup && (
           <p className="mt-6 text-center text-[14px] text-text-2">
-            New to Mailslip?{" "}
+            New to {brand}?{" "}
             <Link href="/register" className="font-medium text-accent">
               Create an account
             </Link>

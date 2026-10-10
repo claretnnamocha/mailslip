@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { jsonError } from "@/lib/api";
-import { allowsPublicSignup } from "@/lib/hosting";
+import { resolveHosting } from "@/lib/hosting";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -12,8 +12,9 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  if (!allowsPublicSignup()) {
-    return jsonError("Account creation is disabled on this server", 403);
+  const { allowSignup, isPlatform } = await resolveHosting();
+  if (!allowSignup || !isPlatform) {
+    return jsonError("Account creation is only available on the Mailslip platform", 403);
   }
 
   const body = schema.safeParse(await request.json());
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
   await prisma.workspace.create({
     data: {
       name: `${body.data.name.split(/\s+/)[0]}'s workspace`,
+      mode: "cloud",
       members: {
         create: {
           userId: user.id,

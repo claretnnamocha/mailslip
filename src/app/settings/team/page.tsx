@@ -15,7 +15,7 @@ type Member = {
   user: { id: string; name?: string | null; email: string };
 };
 
-type Identity = { id: string; email: string };
+type Identity = { id: string; email: string; access?: "SHARED" | "PERSONAL" };
 
 export default function TeamSettingsPage() {
   const { data: session } = useSession();
@@ -43,7 +43,11 @@ export default function TeamSettingsPage() {
       setMembers(data.members || []);
       setViewerRole(data.role ?? null);
     }
-    if (idRes.ok) setIdentities(await idRes.json());
+    if (idRes.ok) {
+      const list = (await idRes.json()) as Identity[];
+      // Personal mailboxes cannot be assigned to other profiles.
+      setIdentities(list.filter((identity) => identity.access !== "PERSONAL"));
+    }
   }
 
   useEffect(() => {
@@ -157,10 +161,10 @@ export default function TeamSettingsPage() {
         {role === "MEMBER" && (
           <div>
             <div className="mb-2 text-[13px] font-medium text-text-2">
-              Assign existing mailboxes. You can change this later, or connect a new server from their row.
+              Assign shared mailboxes. Personal ones stay with their owner and never appear here.
             </div>
             {identities.length === 0 ? (
-              <p className="text-[13px] text-text-3">No mailboxes connected yet.</p>
+              <p className="text-[13px] text-text-3">No shared mailboxes connected yet.</p>
             ) : (
               <div className="space-y-2">
                 {identities.map((identity) => (

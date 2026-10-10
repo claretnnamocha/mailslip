@@ -8,9 +8,14 @@ import type { HostingMode } from "@/lib/hosting";
 import { Toaster } from "sonner";
 
 const HostingContext = createContext<HostingMode>("cloud");
+const BrandContext = createContext("Mailslip");
 
 export function useHostingMode() {
   return useContext(HostingContext);
+}
+
+export function useBrandName() {
+  return useContext(BrandContext);
 }
 
 /**
@@ -32,27 +37,31 @@ function SessionGuard({ children }: { children: React.ReactNode }) {
 export function Providers({
   children,
   hosting,
+  brand = "Mailslip",
 }: {
   children: React.ReactNode;
   hosting: HostingMode;
+  brand?: string;
 }) {
   return (
     <HostingContext.Provider value={hosting}>
-      <SessionProvider refetchInterval={60} refetchOnWindowFocus>
-        <SessionGuard>
-          <ThemeProvider>
-            <DialogProvider>
-              {children}
-              <Toaster
-                position="bottom-left"
-                toastOptions={{
-                  className: "!bg-surface !text-text !border-border !shadow-[var(--shadow)]",
-                }}
-              />
-            </DialogProvider>
-          </ThemeProvider>
-        </SessionGuard>
-      </SessionProvider>
+      <BrandContext.Provider value={brand}>
+        <SessionProvider refetchInterval={60} refetchOnWindowFocus>
+          <SessionGuard>
+            <ThemeProvider>
+              <DialogProvider>
+                {children}
+                <Toaster
+                  position="bottom-left"
+                  toastOptions={{
+                    className: "!bg-surface !text-text !border-border !shadow-[var(--shadow)]",
+                  }}
+                />
+              </DialogProvider>
+            </ThemeProvider>
+          </SessionGuard>
+        </SessionProvider>
+      </BrandContext.Provider>
     </HostingContext.Provider>
   );
 }

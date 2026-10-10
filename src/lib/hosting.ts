@@ -1,38 +1,48 @@
 import type { Metadata } from "next";
+import {
+  getRequestHostContext,
+  tenantAllowsSignup,
+  tenantBrandName,
+  tenantHostingMode,
+  type HostContext,
+} from "@/lib/tenant";
 
 export type HostingMode = "cloud" | "self-hosted";
 
-/** Cloud shows the landing page and public signup. Self-hosted is sign-in only. */
+/** Env-only fallback (CLIs / no request). Prefer resolveHosting() in the app. */
 export function hostingMode(): HostingMode {
-  const raw = (process.env.MAILSLIP_MODE || "cloud")
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, "-")
-    .replace(/\s+/g, "-");
-  if (raw === "self-hosted" || raw === "selfhosted" || raw === "self-host") return "self-hosted";
-  return "cloud";
+  return tenantHostingMode(null);
 }
 
 export function allowsPublicSignup() {
   return hostingMode() === "cloud";
 }
 
-/**
- * Product name in browser titles.
- * Self-hosted can override with MAILSLIP_VENDOR_NAME → "{Vendor}: Inbox".
- * Cloud (and self-hosted without a vendor) stays "Mailslip: …".
- */
 export function brandName() {
-  if (hostingMode() === "self-hosted") {
-    const vendor = process.env.MAILSLIP_VENDOR_NAME?.trim();
-    if (vendor) return vendor;
-  }
-  return "Mailslip";
+  return tenantBrandName(null);
 }
 
-/** Child routes set `title: "Inbox"` and render as `{brand}: Inbox`. */
-export function rootTitleMetadata(): Metadata["title"] {
-  const brand = brandName();
+export async function resolveHosting(context?: HostContext) {
+  const ctx = context ?? (await getRequestHostContext());
+  return {
+    context: ctx,
+    tenant: ctx.kind === "tenant" ? ctx.tenant : null,
+    mode: tenantHostingMode(ctx),
+    brand: tenantBrandName(ctx),
+    allowSignup: tenantAllowsSignup(ctx),
+    isPlatform: ctx.kind === "platform",
+  };
+}
+
+export async function allowsPublicSignupAsync() {
+  return (await resolveHosting()).allowSignup;
+}
+
+export async function brandNameAsync() {
+  return (await resolveHosting()).brand;
+}
+
+export function rootTitleMetadata(brand = brandName()): Metadata["title"] {
   return {
     default: brand,
     template: `${brand}: %s`,

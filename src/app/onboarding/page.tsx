@@ -122,6 +122,7 @@ export default function OnboardingPage() {
   const [form, setForm] = useState<FormState>(initial);
   const [members, setMembers] = useState<WorkspaceMemberOption[]>([]);
   const [assignUserId, setAssignUserId] = useState<string>("");
+  const [access, setAccess] = useState<"SHARED" | "PERSONAL">("SHARED");
   const [allowed, setAllowed] = useState(false);
   const [testing, setTesting] = useState(false);
   const [health, setHealth] = useState<{
@@ -205,6 +206,7 @@ export default function OnboardingPage() {
           cardDavUrl: form.cardDavUrl || undefined,
           calDavUrl: form.calDavUrl || undefined,
           assignUserId: assignee?.id,
+          access,
           test: true,
         }),
       });
@@ -283,6 +285,40 @@ export default function OnboardingPage() {
                 </select>
               </label>
             )}
+            <fieldset className="mt-6 space-y-3">
+              <legend className="mb-2 text-[13px] font-medium text-text-2">Access</legend>
+              <label className="flex cursor-pointer gap-3 rounded-[11px] border border-border-strong bg-surface p-3">
+                <input
+                  type="radio"
+                  name="access"
+                  className="mt-1"
+                  checked={access === "SHARED"}
+                  onChange={() => setAccess("SHARED")}
+                />
+                <span>
+                  <span className="block text-[14px] font-medium text-text">Shared</span>
+                  <span className="mt-0.5 block text-[13px] text-text-2">
+                    Workspace admins can manage it and assign it to other profiles.
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer gap-3 rounded-[11px] border border-border-strong bg-surface p-3">
+                <input
+                  type="radio"
+                  name="access"
+                  className="mt-1"
+                  checked={access === "PERSONAL"}
+                  onChange={() => setAccess("PERSONAL")}
+                />
+                <span>
+                  <span className="block text-[14px] font-medium text-text">Personal</span>
+                  <span className="mt-0.5 block text-[13px] text-text-2">
+                    Only {assignee ? assignee.name || assignee.email : "you"} can use or control this
+                    mailbox. No other profile can access it.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
             <div className="mt-8 space-y-3.5">
               {(
                 [

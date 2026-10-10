@@ -43,22 +43,11 @@ npm run docker:down    # stop all
 npm run docker:restart # rebuild/restart only the app
 ```
 
-Set `MAILSLIP_MODE` in `.env`:
+**Platform entry** (e.g. `mailslip.uselinqr.io`): landing + signup. Set `MAILSLIP_PLATFORM_HOST` / `NEXTAUTH_URL`.
 
-- `cloud` — public landing page and account signup at `/register`
-- `self-hosted` — sign-in only. `/` goes to `/login`, and account creation is hidden and rejected
+**Custom domains**: after signup, owners configure brand + domain under **Settings → Workspace**. That host is sign-in only (self-hosted style). See [`docs/multi-tenant.md`](docs/multi-tenant.md).
 
-Browser tab titles use `Mailslip: {page}` (e.g. `Mailslip: Sign in`). On self-hosted, set `MAILSLIP_VENDOR_NAME` to replace the product name (`Acme: Inbox`).
-
-In cloud mode, create an account at http://localhost:3000/register, then connect a real mailbox in onboarding.
-
-In self-hosted mode, seed the first owner, then sign in and add teammates from Settings → Team:
-
-```bash
-npm run seed:owner -- --email admin@example.com --password '••••••••' --name 'Admin'
-```
-
-Details: [`docs/self-hosted-seed.md`](docs/self-hosted-seed.md).
+Optional first-user CLI (air‑gapped installs only): [`docs/self-hosted-seed.md`](docs/self-hosted-seed.md) / `npm run seed:owner`.
 
 ### Local Next.js (host) + Docker infra only
 
@@ -133,6 +122,7 @@ In onboarding, enter real IMAP/POP3/JMAP and SMTP hosts (or use Gmail/Outlook pr
 | `npm run db:push` | Sync Prisma schema |
 | `npm run db:studio` | Prisma Studio |
 | `npm run seed:owner` | Create the first self-hosted owner |
+| `npm run seed:tenant` | Create/update a multi-tenant workspace + owner |
 
 ## Security notes
 
