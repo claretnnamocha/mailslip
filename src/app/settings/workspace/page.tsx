@@ -13,6 +13,8 @@ type WorkspaceInfo = {
   customDomain?: string | null;
   mode: string;
   platformHosts: string[];
+  cnameTarget: string;
+  cloudflareSaas: boolean;
 };
 
 export default function WorkspaceSettingsPage() {
@@ -23,6 +25,8 @@ export default function WorkspaceSettingsPage() {
   const [brandName, setBrandName] = useState("");
   const [customDomain, setCustomDomain] = useState("");
   const [platformHosts, setPlatformHosts] = useState<string[]>([]);
+  const [cname, setCname] = useState("cname.mailslip.uselinqr.io");
+  const [saas, setSaas] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -37,6 +41,8 @@ export default function WorkspaceSettingsPage() {
     setBrandName(data.brandName || "");
     setCustomDomain(data.customDomain || "");
     setPlatformHosts(data.platformHosts || []);
+    setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
+    setSaas(Boolean(data.cloudflareSaas));
   }
 
   useEffect(() => {
@@ -61,9 +67,11 @@ export default function WorkspaceSettingsPage() {
       setName(data.name || "");
       setBrandName(data.brandName || "");
       setCustomDomain(data.customDomain || "");
+      if (data.cnameTarget) setCname(data.cnameTarget);
+      setSaas(Boolean(data.cloudflareSaas));
       toast.success(
         data.customDomain
-          ? "Saved — add the DNS CNAME, then open your domain to sign in"
+          ? `Saved — CNAME your domain to ${data.cnameTarget || cname}, then open it to sign in`
           : "Workspace updated",
       );
     } catch (err) {
@@ -126,18 +134,24 @@ export default function WorkspaceSettingsPage() {
             placeholder="mail.acme.com"
           />
           <p className="mt-1.5 text-[12px] text-text-3">
-            In DNS, CNAME this hostname to <span className="mono">{entry}</span> (proxied). Then
-            save here. That’s the only setup — leave blank to use the platform entry only.
+            In DNS, CNAME this hostname to <span className="mono">{cname}</span> (proxied). Do{" "}
+            <span className="font-medium text-text">not</span> point at the platform entry. Save here
+            after DNS — leave blank for platform-only access.
           </p>
         </div>
         <div className="rounded-[11px] border border-border bg-surface-2 px-4 py-3 text-[13px] text-text-2">
           <p>
             <span className="font-medium text-text">Platform entry:</span>{" "}
-            <span className="mono">{entry}</span> — landing, signup, and your team’s usual login.
+            <span className="mono">{entry}</span> — landing, signup, team login.
+          </p>
+          <p className="mt-2">
+            <span className="font-medium text-text">DNS target:</span>{" "}
+            <span className="mono">{cname}</span> — customers CNAME here only.
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Per workspace:</span> DNS CNAME + this screen.
             Custom domain is sign-in only and branded; no public signup on that host.
+            {saas ? " Cloudflare registers the hostname when you save." : null}
           </p>
         </div>
         <Button type="submit" size="sm" disabled={saving}>

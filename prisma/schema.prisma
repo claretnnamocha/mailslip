@@ -92,7 +92,7 @@ model Workspace {
   name      String
   /// Platform subdomain: {slug}.{MAILSLIP_BASE_DOMAIN}
   slug      String?  @unique
-  /// Optional vanity host, e.g. mail.acme.com (CNAME to the app)
+  /// Optional vanity host, e.g. mail.acme.com (CNAME to MAILSLIP_CNAME_TARGET)
   customDomain String? @unique
   /// Browser titles / UI brand, e.g. "Linqr Mail"
   brandName String?
