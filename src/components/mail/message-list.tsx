@@ -54,11 +54,19 @@ function folderIcon(folder: MailFolder) {
   }
 }
 
+function threadsForList(mail: MailMessageSummary[], unreadOnly: boolean) {
+  const threads = groupThreads(mail);
+  if (!unreadOnly) return threads;
+  return threads.filter((thread) => thread.messages.some((message) => !message.seen));
+}
+
 export function MessageList({
   query = "",
+  unreadOnly = false,
   onSelect,
 }: {
   query?: string;
+  unreadOnly?: boolean;
   onSelect?: () => void;
 }) {
   const {
@@ -84,6 +92,7 @@ export function MessageList({
   const seededFor = useRef<string | null>(null);
   const searching = query.trim().length > 0;
   const tree = buildFolderTree(folders);
+  const searchThreads = threadsForList(messages, unreadOnly);
 
   useEffect(() => {
     setOpenPaths([]);
@@ -246,8 +255,10 @@ export function MessageList({
 
         {searching && (
           <div className="border-b border-border px-4 py-3">
-            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Search</h2>
-            <p className="text-[12px] text-text-3">{messages.length} found</p>
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">
+              {unreadOnly ? "Unread search" : "Search"}
+            </h2>
+            <p className="text-[12px] text-text-3">{searchThreads.length} found</p>
           </div>
         )}
 
@@ -255,7 +266,7 @@ export function MessageList({
 
         {searching &&
           !loadingList &&
-          groupThreads(messages).map((thread) => (
+          searchThreads.map((thread) => (
             <ThreadBlock
               key={thread.id}
               thread={thread}
@@ -268,9 +279,9 @@ export function MessageList({
             />
           ))}
 
-        {searching && !loadingList && messages.length === 0 && (
+        {searching && !loadingList && searchThreads.length === 0 && (
           <div className="px-6 py-10 text-center">
-            <p className="text-[15px] font-medium">No matches</p>
+            <p className="text-[15px] font-medium">{unreadOnly ? "No unread matches" : "No matches"}</p>
           </div>
         )}
 
@@ -283,6 +294,7 @@ export function MessageList({
               openPaths={openPaths}
               openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
+              unreadOnly={unreadOnly}
               loadingPath={loadingList ? folder : null}
               selectedId={selectedId}
               compact={compact}
@@ -318,6 +330,7 @@ function FolderBranch({
   openPaths,
   openThreadIds,
   mailByFolder,
+  unreadOnly,
   loadingPath,
   selectedId,
   compact,
@@ -334,6 +347,7 @@ function FolderBranch({
   openPaths: string[];
   openThreadIds: string[];
   mailByFolder: Record<string, MailMessageSummary[]>;
+  unreadOnly: boolean;
   loadingPath: string | null;
   selectedId: string | null;
   compact: boolean;
@@ -352,6 +366,7 @@ function FolderBranch({
   const Icon = folderIcon(node.folder);
   const count = groupedScopedUnseen(node, mailByFolder);
   const mail = mailByFolder[node.folder.path];
+  const threads = mail ? threadsForList(mail, unreadOnly) : [];
   const loading = open && loadingPath === node.folder.path && !mail;
   const selectable = node.folder.selectable !== false;
   const isDropTarget = dropTarget === node.folder.path && selectable;
@@ -414,6 +429,7 @@ function FolderBranch({
               openPaths={openPaths}
               openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
+              unreadOnly={unreadOnly}
               loadingPath={loadingPath}
               selectedId={selectedId}
               compact={compact}
@@ -428,7 +444,7 @@ function FolderBranch({
           ))}
           {selectable && loading && <ListSkeleton />}
           {selectable &&
-            groupThreads(mail || []).map((thread) => (
+            threads.map((thread) => (
               <ThreadBlock
                 key={thread.id}
                 thread={thread}
@@ -441,12 +457,12 @@ function FolderBranch({
                 dragPayload={dragPayloadForThread(thread, node.folder.path)}
               />
             ))}
-          {selectable && mail && mail.length === 0 && !loading && (
+          {selectable && mail && threads.length === 0 && !loading && (
             <p
               className="py-2 text-[12px] text-text-3"
               style={{ paddingLeft: 28 + (depth + 1) * 14 }}
             >
-              No messages
+              {unreadOnly && mail.length > 0 ? "No unread" : "No messages"}
             </p>
           )}
         </div>

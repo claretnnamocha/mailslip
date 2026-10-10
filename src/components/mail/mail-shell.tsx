@@ -12,6 +12,7 @@ import { useMailStore } from "@/stores/mail-store";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
+import { cn } from "@/lib/utils";
 import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
 
 export function MailShell() {
@@ -20,6 +21,7 @@ export function MailShell() {
   const [mobileView, setMobileView] = useState<"list" | "message">("list");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const {
     identities,
     setIdentities,
@@ -208,7 +210,9 @@ export function MailShell() {
       }
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
-        const threads = groupThreads(messages);
+        const threads = groupThreads(messages).filter((thread) =>
+          unreadOnly ? thread.messages.some((message) => !message.seen) : true,
+        );
         if (threads.length === 0) return;
         const idx = threads.findIndex((thread) => thread.messages.some((message) => message.id === selectedId));
         const next =
@@ -238,6 +242,7 @@ export function MailShell() {
     closeMessage,
     closeCompose,
     composeOpen,
+    unreadOnly,
   ]);
 
   return (
@@ -281,11 +286,28 @@ export function MailShell() {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            aria-pressed={unreadOnly}
+            onClick={() => setUnreadOnly((value) => !value)}
+            className={cn(
+              "mono shrink-0 rounded-[7px] border px-2.5 py-1.5 text-[11px] font-medium",
+              unreadOnly
+                ? "border-accent/30 bg-accent-tint text-accent"
+                : "border-border bg-surface-2 text-text-2 hover:bg-hover",
+            )}
+          >
+            Unread
+          </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
           <div className={mobileView === "list" ? "flex w-full md:w-auto" : "hidden md:flex"}>
-            <MessageList query={query} onSelect={() => setMobileView("message")} />
+            <MessageList
+              query={query}
+              unreadOnly={unreadOnly}
+              onSelect={() => setMobileView("message")}
+            />
           </div>
           <div
             className={
