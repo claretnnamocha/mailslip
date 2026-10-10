@@ -1,8 +1,9 @@
+import type { NextRequest } from "next/server";
 import { handlers } from "@/lib/auth";
 import { resolvePublicHost } from "@/lib/public-url";
 
 /** Ensure Auth.js sees a public Host (not Railway 0.0.0.0:8080). */
-function withPublicHost(req: Request): Request {
+function withPublicHost(req: NextRequest): NextRequest {
   const headers = new Headers(req.headers);
   const host = resolvePublicHost(headers);
   headers.set("x-forwarded-host", host);
@@ -12,18 +13,14 @@ function withPublicHost(req: Request): Request {
     host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https",
   );
 
-  const init: RequestInit = {
+  return new Request(req.url, {
     method: req.method,
     headers,
-    redirect: "manual",
-  };
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = req.body;
+    body: req.body,
     // @ts-expect-error duplex required for streamed bodies
-    init.duplex = "half";
-  }
-  return new Request(req.url, init);
+    duplex: "half",
+  }) as unknown as NextRequest;
 }
 
-export const GET = (req: Request) => handlers.GET(withPublicHost(req));
-export const POST = (req: Request) => handlers.POST(withPublicHost(req));
+export const GET = (req: NextRequest) => handlers.GET(withPublicHost(req));
+export const POST = (req: NextRequest) => handlers.POST(withPublicHost(req));
