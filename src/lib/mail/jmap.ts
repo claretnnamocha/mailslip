@@ -140,7 +140,7 @@ export async function listJmapMessages(
         accountId: session.accountId,
         filter: { inMailbox: mailboxId },
         sort: [{ property: "receivedAt", isAscending: false }],
-        limit: 50,
+        limit: 200,
       },
       "0",
     ],

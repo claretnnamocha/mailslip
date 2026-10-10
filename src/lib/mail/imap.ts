@@ -133,7 +133,12 @@ function routingHeaders(raw?: Buffer | null): Record<string, string> {
 }
 
 const ROUTING_HEADER_FIELDS = ["delivered-to", "x-original-to", "envelope-to", "x-envelope-to"];
-const LIST_HEADER_FIELDS = [...ROUTING_HEADER_FIELDS, "references"];
+const LIST_HEADER_FIELDS = [
+  ...ROUTING_HEADER_FIELDS,
+  "message-id",
+  "in-reply-to",
+  "references",
+];
 
 function threadFields(
   envelope?: { messageId?: string | null; inReplyTo?: string | null } | null,
@@ -143,12 +148,16 @@ function threadFields(
     .split(/\s+/)
     .map((id) => normalizeMessageId(id))
     .filter((id): id is string => Boolean(id));
-  if (headers?.references) delete headers.references;
-  return {
-    messageId: normalizeMessageId(envelope?.messageId),
-    inReplyTo: normalizeMessageId(envelope?.inReplyTo),
-    references,
-  };
+  const messageId =
+    normalizeMessageId(envelope?.messageId) || normalizeMessageId(headers?.["message-id"]);
+  const inReplyTo =
+    normalizeMessageId(envelope?.inReplyTo) || normalizeMessageId(headers?.["in-reply-to"]);
+  if (headers) {
+    delete headers.references;
+    delete headers["message-id"];
+    delete headers["in-reply-to"];
+  }
+  return { messageId, inReplyTo, references };
 }
 
 function toAddressList(
@@ -259,7 +268,7 @@ export async function listMessages(
   return withImap(config, async (client) => {
     const { lock, path } = await lockMailbox(client, folder);
     try {
-      const limit = options.limit ?? 50;
+      const limit = options.limit ?? 200;
       const exists = (client.mailbox as { exists?: number } | null)?.exists ?? 0;
       if (!exists) return [];
       const start = Math.max(1, exists - limit + 1);

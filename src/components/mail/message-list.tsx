@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, formatMessageDate, initials } from "@/lib/utils";
 import { buildFolderTree, folderRole, groupedUnseen, type FolderNode } from "@/lib/mail/folder-map";
-import { displaySubject, groupThreads, type MailThread } from "@/lib/mail/thread";
+import { displaySubject, groupThreads, threadParticipants, type MailThread } from "@/lib/mail/thread";
 import type { MailFolder, MailMessageSummary } from "@/lib/mail/types";
 import {
   ArchiveIcon,
@@ -282,6 +282,7 @@ function MessageRow({
   const message = thread.latest;
   const seen = thread.messages.every((item) => item.seen);
   const count = thread.messages.length;
+  const people = threadParticipants(thread.messages);
   return (
     <button
       type="button"
@@ -300,17 +301,25 @@ function MessageRow({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "truncate text-[13px]",
+              "min-w-0 truncate text-[13px]",
               seen ? "font-medium text-text" : "font-semibold text-text",
             )}
           >
-            {message.from.name || message.from.address}
+            {people}
           </span>
-          <span className="ml-auto shrink-0 text-[11px] text-text-3">
-            {formatMessageDate(message.date)}
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            {thread.messages.some((item) => item.hasAttachments) && (
+              <PaperclipIcon size={12} className="text-text-3" />
+            )}
+            {count > 1 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border-strong px-1 text-[11px] font-semibold tabular-nums text-text-2">
+                {count}
+              </span>
+            )}
+            <span className="text-[11px] text-text-3">{formatMessageDate(message.date)}</span>
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="mt-0.5 flex items-center gap-1.5">
           <span
             className={cn(
               "truncate text-[12.5px]",
@@ -319,18 +328,10 @@ function MessageRow({
           >
             {displaySubject(message.subject)}
           </span>
-          {count > 1 && (
-            <span className="shrink-0 rounded-full bg-border-strong px-1.5 text-[11px] font-semibold tabular-nums text-text-2">
-              {count}
-            </span>
-          )}
           {!seen && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
         </div>
         <div className="mt-0.5 flex items-center gap-2">
           <span className="truncate text-[12px] text-text-3">{message.snippet}</span>
-          {thread.messages.some((item) => item.hasAttachments) && (
-            <PaperclipIcon size={12} className="shrink-0 text-text-3" />
-          )}
           {thread.messages.some((item) => item.flagged) && (
             <StarIcon size={12} className="shrink-0 text-accent" />
           )}
