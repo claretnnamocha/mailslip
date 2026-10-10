@@ -79,7 +79,10 @@ export async function resolveHostContext(
 
 export async function getRequestHost() {
   const h = await headers();
-  return normalizeHost(h.get("x-forwarded-host") || h.get("host"));
+  // SaaS Worker sets X-Mailslip-Host (Workers cannot rewrite Host on fetch).
+  return normalizeHost(
+    h.get("x-mailslip-host") || h.get("x-forwarded-host") || h.get("host"),
+  );
 }
 
 export async function getRequestHostContext(): Promise<HostContext> {

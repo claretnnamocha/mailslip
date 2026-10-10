@@ -35,11 +35,13 @@ CLOUDFLARE_API_TOKEN=
 On the **platform** Cloudflare zone (e.g. `uselinqr.io`):
 
 1. Enable **Cloudflare for SaaS** / Custom Hostnames.
-2. Set a **fallback origin** (your app origin — configured once on the zone, not per customer).
-3. Create a proxied DNS record for the CNAME target, e.g. `cname.mailslip` → fallback.
-4. Put `MAILSLIP_CNAME_TARGET`, `CLOUDFLARE_ZONE_ID`, and `CLOUDFLARE_API_TOKEN` on the deploy.
+2. Deploy the **SaaS origin Worker** ([`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js)) on custom domain `saas-origin.uselinqr.io`.  
+   Railway rejects unknown `Host` headers (`Application not found`). Host-header Origin Rules are Enterprise-only, so the Worker rewrites `Host` → `mailslip.uselinqr.io` and sets `X-Forwarded-Host` to the customer domain.
+3. Set **Fallback Origin** to `saas-origin.uselinqr.io` (Active).
+4. Create a proxied DNS CNAME target, e.g. `cname.mailslip` → `mailslip.uselinqr.io`.
+5. Put `MAILSLIP_CNAME_TARGET`, `CLOUDFLARE_ZONE_ID`, and `CLOUDFLARE_API_TOKEN` on the deploy.
 
-Customer DNS stays: `CNAME your-domain → cname.mailslip.uselinqr.io` (proxied on their side is fine).
+Customer DNS stays: `CNAME your-domain → cname.mailslip.uselinqr.io` (proxied on their side is fine). No per-domain Railway setup.
 
 ## Settings fields
 
