@@ -7,17 +7,17 @@ One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 | Host | Experience | Tenant key |
 | --- | --- | --- |
 | **Platform** `mailslip.uselinqr.io` | Landing, signup, team login | Session |
-| **Slug** `gbese.mailslip.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
-| **BYOD** `gbese.fun` | Same workspace as the slug | `Host` → `Workspace.customDomain` |
+| **Slug** `{slug}.mailslip.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
+| **BYOD** e.g. `mail.acme.com` | Sign-in only, workspace brand | `Host` → `Workspace.customDomain` |
 
-`gbese.fun` and `gbese.mailslip.uselinqr.io` resolve to the **same** workspace when slug is `gbese` and custom domain is `gbese.fun`.
+**Slug and custom domain are independent.** A workspace can use one, the other, or both. They do not need to match (e.g. slug `acme` + custom domain `inbox.client.com` is fine). Both hosts resolve to that workspace.
 
 ## Per workspace
 
-### Slug (recommended default)
+### Slug
 
-1. **Settings → Workspace**: set **slug** (e.g. `gbese`) + brand → Save.
-2. Open `https://gbese.mailslip.uselinqr.io/login`.
+1. **Settings → Workspace**: set **slug** (e.g. `acme`) + brand → Save.
+2. Open `https://acme.mailslip.uselinqr.io/login`.
 
 No per-tenant DNS. Operator configures wildcard once (below).
 

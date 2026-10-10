@@ -140,8 +140,8 @@ export default function WorkspaceSettingsPage() {
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Workspace</h1>
       <p className="mt-2 max-w-xl text-[15px] text-text-2">
-        Set a slug for a Mailslip subdomain, or attach your own domain. Same workspace either way —
-        sign-in only, your brand.
+        Slug and custom domain are separate. Slug gives you a Mailslip subdomain; custom domain is
+        optional BYOD. Either (or both) serve this workspace — sign-in only, your brand.
       </p>
 
       <form
@@ -167,7 +167,7 @@ export default function WorkspaceSettingsPage() {
             placeholder="gbese"
           />
           <p className="mt-1.5 text-[12px] text-text-3">
-            Your workspace URL:{" "}
+            Mailslip subdomain only (independent of custom domain):{" "}
             <span className="mono text-text">https://{previewHost}</span>
             {slugHost ? (
               <>
@@ -186,7 +186,7 @@ export default function WorkspaceSettingsPage() {
             mono
             value={customDomain}
             onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="gbese.fun"
+            placeholder="mail.acme.com"
           />
           {byodLocked ? (
             <p className="mt-1.5 text-[12px] text-text-3">
@@ -195,8 +195,8 @@ export default function WorkspaceSettingsPage() {
             </p>
           ) : (
             <p className="mt-1.5 text-[12px] text-text-3">
-              Optional BYOD. CNAME to <span className="mono">{cname}</span> (proxied). Same
-              workspace as your slug host — e.g. gbese.fun ≡ gbese.{tenantBase}.
+              Optional. Your own hostname (does not have to match the slug). CNAME to{" "}
+              <span className="mono">{cname}</span> (proxied).
             </p>
           )}
         </div>
