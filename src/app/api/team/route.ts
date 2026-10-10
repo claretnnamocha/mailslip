@@ -36,7 +36,6 @@ const schema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   role: z.enum(["ADMIN", "MEMBER"]).default("MEMBER"),
-  requirePasswordChange: z.boolean().default(true),
   identityIds: z.array(z.string()).default([]),
 });
 
@@ -62,7 +61,7 @@ export async function POST(request: Request) {
       name: body.name,
       loginName: body.email.toLowerCase(),
       passwordHash: await hashPassword(temporaryPassword),
-      mustChangePassword: body.requirePasswordChange,
+      mustChangePassword: true,
       memberships: {
         create: {
           workspaceId: membership.workspaceId,

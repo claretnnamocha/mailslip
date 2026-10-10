@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { MessageList } from "./message-list";
@@ -49,6 +50,10 @@ export function MailShell() {
         fetch("/api/identities"),
         fetch("/api/team"),
       ]);
+      if (idRes.status === 401 || teamRes.status === 401) {
+        await signOut({ callbackUrl: "/login" });
+        return;
+      }
       const team = teamRes.ok ? await teamRes.json() : null;
       const role = typeof team?.role === "string" ? team.role : null;
       const isAdmin = role === "OWNER" || role === "ADMIN";

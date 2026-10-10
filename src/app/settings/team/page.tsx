@@ -67,7 +67,6 @@ export default function TeamSettingsPage() {
         name,
         email,
         role,
-        requirePasswordChange: true,
         identityIds: role === "MEMBER" ? grantIdentityIds : [],
       }),
     });

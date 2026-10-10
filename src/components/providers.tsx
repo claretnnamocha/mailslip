@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import { SessionProvider } from "next-auth/react";
+import { createContext, useContext, useEffect } from "react";
+import { SessionProvider, signOut, useSession } from "next-auth/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DialogProvider } from "@/components/dialog-provider";
 import type { HostingMode } from "@/lib/hosting";
@@ -13,6 +13,19 @@ export function useHostingMode() {
   return useContext(HostingContext);
 }
 
+/** Clears the cookie when the JWT outlives a deleted account. */
+function SessionGuard({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === "authenticated" && !session?.user?.id) {
+      void signOut({ callbackUrl: "/login" });
+    }
+  }, [status, session?.user?.id]);
+
+  return <>{children}</>;
+}
+
 export function Providers({
   children,
   hosting,
@@ -22,18 +35,20 @@ export function Providers({
 }) {
   return (
     <HostingContext.Provider value={hosting}>
-      <SessionProvider>
-        <ThemeProvider>
-          <DialogProvider>
-            {children}
-            <Toaster
-              position="bottom-left"
-              toastOptions={{
-                className: "!bg-surface !text-text !border-border !shadow-[var(--shadow)]",
-              }}
-            />
-          </DialogProvider>
-        </ThemeProvider>
+      <SessionProvider refetchInterval={60} refetchOnWindowFocus>
+        <SessionGuard>
+          <ThemeProvider>
+            <DialogProvider>
+              {children}
+              <Toaster
+                position="bottom-left"
+                toastOptions={{
+                  className: "!bg-surface !text-text !border-border !shadow-[var(--shadow)]",
+                }}
+              />
+            </DialogProvider>
+          </ThemeProvider>
+        </SessionGuard>
       </SessionProvider>
     </HostingContext.Provider>
   );

@@ -119,3 +119,18 @@ export function groupedUnseen<T extends FolderLike & { unseen?: number }>(
   const own = node.folder.selectable === false ? 0 : node.folder.unseen || 0;
   return own + node.children.reduce((sum, child) => sum + groupedUnseen(child), 0);
 }
+
+/** Unread counts from scoped message lists (alias filtering), not raw server UNSEEN. */
+export function groupedScopedUnseen(
+  node: FolderNode<FolderLike & { unseen?: number }>,
+  mailByFolder: Record<string, { seen: boolean }[]>,
+): number {
+  const cached = mailByFolder[node.folder.path];
+  const own =
+    node.folder.selectable === false
+      ? 0
+      : cached
+        ? cached.filter((message) => !message.seen).length
+        : 0;
+  return own + node.children.reduce((sum, child) => sum + groupedScopedUnseen(child, mailByFolder), 0);
+}

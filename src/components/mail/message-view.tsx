@@ -61,6 +61,29 @@ export function MessageView() {
     const summary = messagesRef.current.find((m) => m.id === selectedId);
     if (!summary) return;
     const members = threadContaining(messagesRef.current, selectedId)?.messages || [summary];
+    const unseenEarly = members.filter((message) => !message.seen);
+    if (unseenEarly.length > 0) {
+      const seenIds = new Set(unseenEarly.map((message) => message.id));
+      setMessages(
+        messagesRef.current.map((message) =>
+          seenIds.has(message.id) ? { ...message, seen: true } : message,
+        ),
+      );
+      void Promise.all(
+        unseenEarly.map((message) =>
+          fetch(`/api/mail/messages/${message.uid}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              identityId: message.identityId,
+              folder: message.folder,
+              remoteId: message.remoteId || String(message.uid),
+              seen: true,
+            }),
+          }),
+        ),
+      );
+    }
 
     let cancelled = false;
     (async () => {
@@ -78,29 +101,6 @@ export function MessageView() {
         const ordered = [...data].sort((a, b) => +new Date(a.date) - +new Date(b.date));
         setThreadMessages(ordered);
         setSelectedMessage(ordered[ordered.length - 1] || null);
-        const unseen = members.filter((message) => !message.seen);
-        await Promise.all(
-          unseen.map((message) =>
-            fetch(`/api/mail/messages/${message.uid}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                identityId: message.identityId,
-                folder: message.folder,
-                remoteId: message.remoteId || String(message.uid),
-                seen: true,
-              }),
-            }),
-          ),
-        );
-        if (!cancelled && unseen.length > 0) {
-          const seenIds = new Set(unseen.map((message) => message.id));
-          setMessages(
-            messagesRef.current.map((message) =>
-              seenIds.has(message.id) ? { ...message, seen: true } : message,
-            ),
-          );
-        }
       } catch {
         if (!cancelled) toast.error("Could not open message");
       } finally {

@@ -17,6 +17,7 @@ const schema = z.object({
   text: z.string().optional(),
   inReplyTo: z.string().optional(),
   references: z.array(z.string()).optional(),
+  copyToFolder: z.string().optional(),
   scheduleAt: z.string().datetime().optional(),
   encrypt: z.boolean().optional(),
   sign: z.boolean().optional(),
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
       text,
       inReplyTo: body.inReplyTo,
       references: body.references,
+      copyToFolder: body.copyToFolder,
     });
     return NextResponse.json(result);
   } catch (e) {

@@ -89,4 +89,6 @@ export type SendPayload = {
   text?: string;
   inReplyTo?: string;
   references?: string[];
+  /** After send, also append a copy to this IMAP folder (e.g. reply from a filed thread). */
+  copyToFolder?: string;
 };

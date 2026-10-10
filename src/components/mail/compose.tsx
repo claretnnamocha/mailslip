@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDialog } from "@/components/dialog-provider";
 import { useMailStore } from "@/stores/mail-store";
+import { folderRole } from "@/lib/mail/folder-map";
 import { cn, parseAddressList } from "@/lib/utils";
 import {
   BoldIcon,
@@ -26,6 +27,8 @@ export function Compose() {
     identities,
     activeIdentityId,
     selectedMessage,
+    folder,
+    setMessages,
   } = useMailStore();
 
   const defaultIdentity =
@@ -128,6 +131,21 @@ export function Compose() {
     setSending(true);
     try {
       const undoAt = new Date(Date.now() + 10_000).toISOString();
+      const replyFolder = selectedMessage?.folder;
+      const copyToFolder =
+        selectedMessage &&
+        (composeMode === "reply" || composeMode === "replyAll") &&
+        replyFolder &&
+        folderRole({ path: replyFolder, name: replyFolder.split(/[./]/).pop() || replyFolder }) !==
+          "sent"
+          ? replyFolder
+          : undefined;
+      const references = selectedMessage?.messageId
+        ? [
+            ...(selectedMessage.references || []),
+            selectedMessage.messageId,
+          ].filter((id, index, list) => list.indexOf(id) === index)
+        : selectedMessage?.references;
       const payload = {
         identityId,
         to: parseAddressList(to),
@@ -137,7 +155,8 @@ export function Compose() {
         html: plain ? undefined : body.replace(/\n/g, "<br/>"),
         text: body,
         inReplyTo: selectedMessage?.messageId,
-        references: selectedMessage?.references,
+        references,
+        copyToFolder,
         encrypt,
         sign: encrypt && sign,
         passphrase,
@@ -171,6 +190,11 @@ export function Compose() {
         toast.success("Scheduled", { description: `Sends at ${new Date(data.sendAt).toLocaleString()}` });
       } else {
         toast.success("Message sent");
+        if (activeIdentityId !== "all" && folder) {
+          const params = new URLSearchParams({ folder, identityId: activeIdentityId });
+          const listRes = await fetch(`/api/mail/messages?${params}`);
+          if (listRes.ok) setMessages(await listRes.json());
+        }
       }
       closeCompose();
     } catch (e) {

@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useMailStore } from "@/stores/mail-store";
 import { cn, formatMessageDate, initials } from "@/lib/utils";
-import { buildFolderTree, folderRole, groupedUnseen, type FolderNode } from "@/lib/mail/folder-map";
-import { displaySubject, groupThreads, threadParticipants, type MailThread } from "@/lib/mail/thread";
+import { buildFolderTree, folderRole, groupedScopedUnseen, type FolderNode } from "@/lib/mail/folder-map";
+import {
+  displaySubject,
+  groupThreads,
+  threadContaining,
+  threadParticipants,
+  type MailThread,
+} from "@/lib/mail/thread";
+import { toast } from "sonner";
 import type { MailFolder, MailMessageSummary } from "@/lib/mail/types";
 import {
   ArchiveIcon,
@@ -19,6 +26,14 @@ import {
   TrashIcon,
 } from "./icons";
 import { useTheme } from "@/components/theme-provider";
+
+const DRAG_MIME = "application/x-mailslip-mail";
+
+type MailDragPayload = {
+  sourceFolder: string;
+  messageIds: string[];
+  moves: { uid: number; remoteId?: string; identityId: string; folder: string }[];
+};
 
 function folderIcon(folder: MailFolder) {
   switch (folderRole(folder)) {
@@ -58,17 +73,21 @@ export function MessageList({
     foldersReady,
     activeIdentityId,
     identities,
+    setMessages,
   } = useMailStore();
   const { density } = useTheme();
   const compact = density === "compact";
   const [openPaths, setOpenPaths] = useState<string[]>([]);
+  const [openThreadIds, setOpenThreadIds] = useState<string[]>([]);
   const [mailByFolder, setMailByFolder] = useState<Record<string, MailMessageSummary[]>>({});
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const seededFor = useRef<string | null>(null);
   const searching = query.trim().length > 0;
   const tree = buildFolderTree(folders);
 
   useEffect(() => {
     setOpenPaths([]);
+    setOpenThreadIds([]);
     setMailByFolder({});
     seededFor.current = null;
   }, [activeIdentityId]);
@@ -88,12 +107,120 @@ export function MessageList({
     setMailByFolder((prev) => ({ ...prev, [folder]: messages }));
   }, [folder, messages, loadingList, searching]);
 
+  useEffect(() => {
+    if (searching || !foldersReady) return;
+    if (openPaths.length === 0) {
+      closeMessage();
+      setOpenThreadIds([]);
+    }
+  }, [openPaths, searching, foldersReady, closeMessage]);
+
   function toggleFolder(item: MailFolder) {
     const willOpen = !openPaths.includes(item.path);
+    const prefix = `${item.path}${item.delimiter || "."}`;
     setOpenPaths((prev) =>
-      prev.includes(item.path) ? prev.filter((path) => path !== item.path) : [...prev, item.path],
+      willOpen
+        ? [...prev, item.path]
+        : prev.filter((path) => path !== item.path && !path.startsWith(prefix)),
     );
     if (willOpen && item.selectable !== false && item.path !== folder) setFolder(item.path);
+  }
+
+  function toggleThreadExpanded(threadId: string) {
+    setOpenThreadIds((prev) =>
+      prev.includes(threadId) ? prev.filter((id) => id !== threadId) : [...prev, threadId],
+    );
+  }
+
+  function markThreadSeen(members: MailMessageSummary[]) {
+    const unseen = members.filter((message) => !message.seen);
+    if (unseen.length === 0) return;
+    const ids = new Set(unseen.map((message) => message.id));
+    setMailByFolder((prev) => {
+      const next = { ...prev };
+      for (const path of Object.keys(next)) {
+        next[path] = next[path].map((message) =>
+          ids.has(message.id) ? { ...message, seen: true } : message,
+        );
+      }
+      return next;
+    });
+    if (unseen.some((message) => message.folder === folder)) {
+      setMessages(
+        messages.map((message) => (ids.has(message.id) ? { ...message, seen: true } : message)),
+      );
+    }
+    void Promise.all(
+      unseen.map((message) =>
+        fetch(`/api/mail/messages/${message.uid}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identityId: message.identityId,
+            folder: message.folder,
+            remoteId: message.remoteId || String(message.uid),
+            seen: true,
+          }),
+        }),
+      ),
+    );
+  }
+
+  async function moveDraggedMail(payload: MailDragPayload, destinationPath: string, destName: string) {
+    if (payload.sourceFolder === destinationPath) return;
+    try {
+      await Promise.all(
+        payload.moves.map((move) =>
+          fetch(`/api/mail/messages/${move.uid}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              identityId: move.identityId,
+              folder: move.folder,
+              remoteId: move.remoteId || String(move.uid),
+              action: "move",
+              destination: destinationPath,
+            }),
+          }),
+        ),
+      );
+      const removed = new Set(payload.messageIds);
+      setMailByFolder((prev) => {
+        const next = { ...prev };
+        for (const path of Object.keys(next)) {
+          next[path] = next[path].filter((message) => !removed.has(message.id));
+        }
+        return next;
+      });
+      if (folder === payload.sourceFolder) {
+        setMessages(messages.filter((message) => !removed.has(message.id)));
+      }
+      if (selectedId && removed.has(selectedId)) closeMessage();
+      if (folder === destinationPath && activeIdentityId !== "all") {
+        const params = new URLSearchParams({ folder, identityId: activeIdentityId });
+        const res = await fetch(`/api/mail/messages?${params}`);
+        if (res.ok) setMessages(await res.json());
+      }
+      toast.success(`Moved to ${destName}`);
+    } catch {
+      toast.error("Could not move message");
+    }
+  }
+
+  function dragPayloadForThread(
+    thread: MailThread<MailMessageSummary>,
+    sourceFolder: string,
+  ): MailDragPayload {
+    return {
+      sourceFolder,
+      messageIds: thread.messages.map((message) => message.id),
+      moves: thread.messages.map((message) => ({
+        uid: message.uid,
+        remoteId: message.remoteId,
+        identityId: message.identityId,
+        folder: message.folder,
+      })),
+    };
   }
 
   return (
@@ -129,12 +256,15 @@ export function MessageList({
         {searching &&
           !loadingList &&
           groupThreads(messages).map((thread) => (
-            <MessageRow
+            <ThreadBlock
               key={thread.id}
               thread={thread}
-              active={thread.messages.some((message) => message.id === selectedId)}
+              selectedId={selectedId}
               compact={compact}
-              onClick={() => openMessage(thread.latest)}
+              expanded={openThreadIds.includes(thread.id)}
+              onToggleExpand={() => toggleThreadExpanded(thread.id)}
+              onOpenMessage={openMessage}
+              dragPayload={dragPayloadForThread(thread, folder)}
             />
           ))}
 
@@ -151,19 +281,28 @@ export function MessageList({
               node={node}
               depth={0}
               openPaths={openPaths}
+              openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
               loadingPath={loadingList ? folder : null}
               selectedId={selectedId}
               compact={compact}
+              dropTarget={dropTarget}
               onToggle={toggleFolder}
+              onToggleThread={toggleThreadExpanded}
               onOpenMessage={openMessage}
+              onDropTarget={setDropTarget}
+              onMoveMail={moveDraggedMail}
+              dragPayloadForThread={dragPayloadForThread}
             />
           ))}
       </div>
     </section>
   );
 
-  function openMessage(message: MailMessageSummary) {
+  function openMessage(message: MailMessageSummary, threadMail?: MailMessageSummary[]) {
+    const pool = threadMail || mailByFolder[message.folder] || messages;
+    const members = threadContaining(pool, message.id)?.messages || [message];
+    markThreadSeen(members);
     if (message.id === selectedId) {
       closeMessage();
       return;
@@ -177,29 +316,52 @@ function FolderBranch({
   node,
   depth,
   openPaths,
+  openThreadIds,
   mailByFolder,
   loadingPath,
   selectedId,
   compact,
+  dropTarget,
   onToggle,
+  onToggleThread,
   onOpenMessage,
+  onDropTarget,
+  onMoveMail,
+  dragPayloadForThread,
 }: {
   node: FolderNode<MailFolder>;
   depth: number;
   openPaths: string[];
+  openThreadIds: string[];
   mailByFolder: Record<string, MailMessageSummary[]>;
   loadingPath: string | null;
   selectedId: string | null;
   compact: boolean;
+  dropTarget: string | null;
   onToggle: (folder: MailFolder) => void;
-  onOpenMessage: (message: MailMessageSummary) => void;
+  onToggleThread: (threadId: string) => void;
+  onOpenMessage: (message: MailMessageSummary, threadMail?: MailMessageSummary[]) => void;
+  onDropTarget: (path: string | null) => void;
+  onMoveMail: (payload: MailDragPayload, destinationPath: string, destName: string) => void;
+  dragPayloadForThread: (
+    thread: MailThread<MailMessageSummary>,
+    sourceFolder: string,
+  ) => MailDragPayload;
 }) {
   const open = openPaths.includes(node.folder.path);
   const Icon = folderIcon(node.folder);
-  const count = groupedUnseen(node);
+  const count = groupedScopedUnseen(node, mailByFolder);
   const mail = mailByFolder[node.folder.path];
   const loading = open && loadingPath === node.folder.path && !mail;
   const selectable = node.folder.selectable !== false;
+  const isDropTarget = dropTarget === node.folder.path && selectable;
+
+  function onFolderDragOver(e: DragEvent) {
+    if (!selectable || !e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    onDropTarget(node.folder.path);
+  }
 
   return (
     <div>
@@ -207,7 +369,25 @@ function FolderBranch({
         type="button"
         aria-expanded={open}
         onClick={() => onToggle(node.folder)}
-        className="flex w-full items-center gap-2 py-2 pr-3 text-left text-[13.5px] font-medium text-text hover:bg-hover"
+        onDragOver={onFolderDragOver}
+        onDragLeave={() => onDropTarget(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          onDropTarget(null);
+          if (!selectable) return;
+          const raw = e.dataTransfer.getData(DRAG_MIME);
+          if (!raw) return;
+          try {
+            const payload = JSON.parse(raw) as MailDragPayload;
+            void onMoveMail(payload, node.folder.path, node.folder.name);
+          } catch {
+            /* ignore */
+          }
+        }}
+        className={cn(
+          "flex w-full items-center gap-2 py-2 pr-3 text-left text-[13.5px] font-medium text-text hover:bg-hover",
+          isDropTarget && "bg-accent-tint ring-1 ring-inset ring-accent/40",
+        )}
         style={{ paddingLeft: 12 + depth * 14 }}
         title={node.folder.path}
       >
@@ -232,24 +412,33 @@ function FolderBranch({
               node={child}
               depth={depth + 1}
               openPaths={openPaths}
+              openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
               loadingPath={loadingPath}
               selectedId={selectedId}
               compact={compact}
+              dropTarget={dropTarget}
               onToggle={onToggle}
+              onToggleThread={onToggleThread}
               onOpenMessage={onOpenMessage}
+              onDropTarget={onDropTarget}
+              onMoveMail={onMoveMail}
+              dragPayloadForThread={dragPayloadForThread}
             />
           ))}
           {selectable && loading && <ListSkeleton />}
           {selectable &&
             groupThreads(mail || []).map((thread) => (
-              <MessageRow
+              <ThreadBlock
                 key={thread.id}
                 thread={thread}
-                active={thread.messages.some((message) => message.id === selectedId)}
+                selectedId={selectedId}
                 compact={compact}
                 indent={depth + 1}
-                onClick={() => onOpenMessage(thread.latest)}
+                expanded={openThreadIds.includes(thread.id)}
+                onToggleExpand={() => onToggleThread(thread.id)}
+                onOpenMessage={(message) => onOpenMessage(message, mail)}
+                dragPayload={dragPayloadForThread(thread, node.folder.path)}
               />
             ))}
           {selectable && mail && mail.length === 0 && !loading && (
@@ -266,78 +455,181 @@ function FolderBranch({
   );
 }
 
+function ThreadBlock({
+  thread,
+  selectedId,
+  compact,
+  indent = 0,
+  expanded,
+  onToggleExpand,
+  onOpenMessage,
+  dragPayload,
+}: {
+  thread: MailThread<MailMessageSummary>;
+  selectedId: string | null;
+  compact: boolean;
+  indent?: number;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onOpenMessage: (message: MailMessageSummary) => void;
+  dragPayload: MailDragPayload;
+}) {
+  const count = thread.messages.length;
+  const older = [...thread.messages]
+    .sort((a, b) => +new Date(b.date) - +new Date(a.date))
+    .slice(1);
+
+  return (
+    <div>
+      <MessageRow
+        thread={thread}
+        active={thread.messages.some((message) => message.id === selectedId)}
+        compact={compact}
+        indent={indent}
+        expandable={count > 1}
+        expanded={expanded}
+        onToggleExpand={onToggleExpand}
+        onClick={() => onOpenMessage(thread.latest)}
+        dragPayload={dragPayload}
+      />
+      {expanded &&
+        older.map((message) => (
+          <MessageRow
+            key={message.id}
+            thread={thread}
+            message={message}
+            active={message.id === selectedId}
+            compact={compact}
+            indent={indent + 1}
+            subRow
+            onClick={() => onOpenMessage(message)}
+            dragPayload={dragPayload}
+          />
+        ))}
+    </div>
+  );
+}
+
 function MessageRow({
   thread,
+  message: messageOverride,
   active,
   compact,
   indent = 0,
+  subRow = false,
+  expandable = false,
+  expanded = false,
+  onToggleExpand,
   onClick,
+  dragPayload,
 }: {
   thread: MailThread<MailMessageSummary>;
+  message?: MailMessageSummary;
   active: boolean;
   compact: boolean;
   indent?: number;
+  subRow?: boolean;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
   onClick: () => void;
+  dragPayload?: MailDragPayload;
 }) {
-  const message = thread.latest;
-  const seen = thread.messages.every((item) => item.seen);
+  const message = messageOverride || thread.latest;
+  const seen = messageOverride ? message.seen : thread.messages.every((item) => item.seen);
   const count = thread.messages.length;
-  const people = threadParticipants(thread.messages);
+  const people = subRow
+    ? message.from.name || message.from.address
+    : threadParticipants(thread.messages);
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
+      draggable={Boolean(dragPayload) && !subRow}
+      onDragStart={(e) => {
+        if (!dragPayload) return;
+        e.dataTransfer.setData(DRAG_MIME, JSON.stringify(dragPayload));
+        e.dataTransfer.effectAllowed = "move";
+      }}
       className={cn(
-        "group flex w-full gap-3 border-b border-border text-left transition-colors duration-150",
-        compact ? "py-2.5 pr-3" : "py-3.5 pr-3",
+        "group flex w-full border-b border-border text-left transition-colors duration-150",
         active ? "border-l-2 border-l-accent bg-accent-tint" : "hover:bg-hover",
       )}
-      style={{ paddingLeft: 16 + indent * 14 }}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-border-strong text-[11px] font-semibold text-text-2">
-        {initials(message.from.name, message.from.address)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "min-w-0 truncate text-[13px]",
-              seen ? "font-medium text-text" : "font-semibold text-text",
-            )}
-          >
-            {people}
-          </span>
-          <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            {thread.messages.some((item) => item.hasAttachments) && (
-              <PaperclipIcon size={12} className="text-text-3" />
-            )}
-            {count > 1 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border-strong px-1 text-[11px] font-semibold tabular-nums text-text-2">
-                {count}
-              </span>
-            )}
-            <span className="text-[11px] text-text-3">{formatMessageDate(message.date)}</span>
-          </span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <span
-            className={cn(
-              "truncate text-[12.5px]",
-              seen ? "text-text-2" : "font-medium text-text",
-            )}
-          >
-            {displaySubject(message.subject)}
-          </span>
-          {!seen && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
-        </div>
-        <div className="mt-0.5 flex items-center gap-2">
-          <span className="truncate text-[12px] text-text-3">{message.snippet}</span>
-          {thread.messages.some((item) => item.flagged) && (
-            <StarIcon size={12} className="shrink-0 text-accent" />
+      {expandable && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand?.();
+          }}
+          className="flex shrink-0 items-center self-stretch pl-2 text-text-3 hover:text-text"
+          style={{ marginLeft: 4 + indent * 14 }}
+        >
+          <ChevronIcon size={14} className={cn("transition-transform", expanded && "rotate-90")} />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        style={!expandable ? { paddingLeft: 16 + indent * 14 } : undefined}
+        className={cn(
+          "flex min-w-0 flex-1 gap-3",
+          compact ? "py-2.5 pr-3" : "py-3.5 pr-3",
+          expandable && "pl-1",
+        )}
+      >
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-full bg-border-strong font-semibold text-text-2",
+            subRow ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-[11px]",
           )}
+        >
+          {initials(message.from.name, message.from.address)}
         </div>
-      </div>
-    </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "min-w-0 truncate text-[13px]",
+                seen ? "font-medium text-text" : "font-semibold text-text",
+                subRow && "text-[12px]",
+              )}
+            >
+              {people}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {!subRow && thread.messages.some((item) => item.hasAttachments) && (
+                <PaperclipIcon size={12} className="text-text-3" />
+              )}
+              {!subRow && count > 1 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border-strong px-1 text-[11px] font-semibold tabular-nums text-text-2">
+                  {count}
+                </span>
+              )}
+              <span className="text-[11px] text-text-3">{formatMessageDate(message.date)}</span>
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span
+              className={cn(
+                "truncate text-[12.5px]",
+                seen ? "text-text-2" : "font-medium text-text",
+              )}
+            >
+              {displaySubject(message.subject)}
+            </span>
+            {!seen && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="truncate text-[12px] text-text-3">{message.snippet}</span>
+            {!subRow && thread.messages.some((item) => item.flagged) && (
+              <StarIcon size={12} className="shrink-0 text-accent" />
+            )}
+          </div>
+        </div>
+      </button>
+    </div>
   );
 }
 

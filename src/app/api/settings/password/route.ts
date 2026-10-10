@@ -17,7 +17,10 @@ export async function POST(request: Request) {
   const user = await prisma.user.findUnique({ where: { id: authResult.userId } });
   if (!user) return jsonError("User not found", 404);
 
-  if (user.passwordHash && body.currentPassword) {
+  if (user.passwordHash) {
+    if (!body.currentPassword) {
+      return jsonError("Current password is required", 400);
+    }
     if (!(await verifyPassword(body.currentPassword, user.passwordHash))) {
       return jsonError("Current password is incorrect", 400);
     }

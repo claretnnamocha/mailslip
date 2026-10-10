@@ -292,17 +292,8 @@ export async function sendIdentityMail(identity: MailIdentity, payload: SendPayl
   });
 
   if (config.incomingProtocol === "IMAP") {
-    const raw = [
-      `From: ${identity.email}`,
-      `To: ${payload.to.join(", ")}`,
-      `Subject: ${payload.subject}`,
-      `Date: ${new Date().toUTCString()}`,
-      `Message-ID: ${result.messageId || `<mailslip-${Date.now()}@local>`}`,
-      "MIME-Version: 1.0",
-      'Content-Type: text/plain; charset="utf-8"',
-      "",
-      payload.text || "",
-    ].join("\r\n");
+    const messageId = result.messageId || `<mailslip-${Date.now()}@local>`;
+    const raw = buildImapAppendRaw(identity, payload, messageId);
     try {
       await appendMessage(config, "Sent", raw, ["\\Seen"]);
     } catch {
@@ -312,9 +303,50 @@ export async function sendIdentityMail(identity: MailIdentity, payload: SendPayl
         /* Sent folder may not exist */
       }
     }
+    const copyTo = payload.copyToFolder?.trim();
+    if (copyTo && !copyTo.toLowerCase().includes("sent")) {
+      try {
+        await appendMessage(config, copyTo, raw, ["\\Seen"]);
+      } catch {
+        /* filed folder may be missing on some servers */
+      }
+    }
   }
 
   return result;
+}
+
+function buildImapAppendRaw(
+  identity: MailIdentity,
+  payload: SendPayload,
+  messageId: string,
+): string {
+  const from = identity.displayName
+    ? `"${identity.displayName.replace(/"/g, '\\"')}" <${identity.email}>`
+    : identity.email;
+  const lines = [
+    `From: ${from}`,
+    `To: ${payload.to.join(", ")}`,
+  ];
+  if (payload.cc?.length) lines.push(`Cc: ${payload.cc.join(", ")}`);
+  lines.push(`Subject: ${payload.subject}`);
+  lines.push(`Date: ${new Date().toUTCString()}`);
+  lines.push(`Message-ID: ${messageId}`);
+  if (payload.inReplyTo) lines.push(`In-Reply-To: ${payload.inReplyTo}`);
+  const refs = [...(payload.references || [])];
+  if (payload.inReplyTo && !refs.includes(payload.inReplyTo)) refs.unshift(payload.inReplyTo);
+  if (refs.length) lines.push(`References: ${refs.join(" ")}`);
+  lines.push("MIME-Version: 1.0");
+  if (payload.html) {
+    lines.push('Content-Type: text/html; charset="utf-8"');
+    lines.push("");
+    lines.push(payload.html);
+  } else {
+    lines.push('Content-Type: text/plain; charset="utf-8"');
+    lines.push("");
+    lines.push(payload.text || "");
+  }
+  return lines.join("\r\n");
 }
 
 export async function searchIdentityMail(identity: MailIdentity, query: string, folder = "INBOX") {

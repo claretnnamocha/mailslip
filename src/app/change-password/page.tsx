@@ -68,6 +68,7 @@ export default function ChangePasswordPage() {
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
+            required
           />
           <Input
             label="New password"

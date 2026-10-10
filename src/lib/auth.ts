@@ -58,6 +58,7 @@ providers.push(
           name: user.name,
           email: user.email,
           loginName: user.loginName || user.email,
+          mustChangePassword: user.mustChangePassword,
         };
       }
 
@@ -143,6 +144,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (account?.provider === "credentials") {
           token.userId = user.id;
           token.email = user.email?.toLowerCase();
+          token.mustChangePassword = Boolean(user.mustChangePassword);
           return token;
         }
 
@@ -183,12 +185,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.userId = dbUser.id;
         token.mustChangePassword = dbUser.mustChangePassword;
         token.email = email;
+        return token;
       }
+
+      // Drop sessions for deleted accounts (admin remove or self-delete).
+      if (token.userId) {
+        const existing = await prisma.user.findUnique({
+          where: { id: token.userId as string },
+          select: { id: true, mustChangePassword: true },
+        });
+        if (!existing) {
+          return { ...token, userId: undefined, mustChangePassword: false, email: undefined };
+        }
+        token.mustChangePassword = existing.mustChangePassword;
+      }
+
       return token;
     },
     async session({ session, token }) {
+      if (!token.userId) {
+        return { ...session, user: undefined };
+      }
       if (session.user) {
-        session.user.id = (token.userId as string) || (token.sub as string);
+        session.user.id = token.userId as string;
         session.user.mustChangePassword = Boolean(token.mustChangePassword);
       }
       return session;
@@ -202,7 +221,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         path.startsWith("/api/auth") ||
         path.startsWith("/api/health");
       if (isPublic) return true;
-      if (!session?.user) return false;
+      if (!session?.user?.id) return false;
       if (
         session.user.mustChangePassword &&
         !path.startsWith("/change-password") &&
