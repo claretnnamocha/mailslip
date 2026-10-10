@@ -45,7 +45,7 @@ npm run docker:restart # rebuild/restart only the app
 
 **Platform entry** (e.g. `mailslip.uselinqr.io`): landing + signup. Set `MAILSLIP_PLATFORM_HOST` / `NEXTAUTH_URL`.
 
-**Custom domains**: after signup, owners configure brand + domain under **Settings → Workspace**. That host is sign-in only (self-hosted style). See [`docs/multi-tenant.md`](docs/multi-tenant.md).
+**Custom domains**: DNS CNAME (proxied) to the platform entry + **Settings → Workspace** (brand + domain). Sign-in only on that host. See [`docs/multi-tenant.md`](docs/multi-tenant.md).
 
 Optional first-user CLI (air‑gapped installs only): [`docs/self-hosted-seed.md`](docs/self-hosted-seed.md) / `npm run seed:owner`.
 

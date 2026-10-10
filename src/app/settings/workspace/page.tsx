@@ -63,7 +63,7 @@ export default function WorkspaceSettingsPage() {
       setCustomDomain(data.customDomain || "");
       toast.success(
         data.customDomain
-          ? "Custom domain saved — point DNS here, then open that host to use your branded inbox"
+          ? "Saved — add the DNS CNAME, then open your domain to sign in"
           : "Workspace updated",
       );
     } catch (err) {
@@ -126,7 +126,8 @@ export default function WorkspaceSettingsPage() {
             placeholder="mail.acme.com"
           />
           <p className="mt-1.5 text-[12px] text-text-3">
-            CNAME this host to {entry}. Leave blank to use only the platform entry.
+            In DNS, CNAME this hostname to <span className="mono">{entry}</span> (proxied). Then
+            save here. That’s the only setup — leave blank to use the platform entry only.
           </p>
         </div>
         <div className="rounded-[11px] border border-border bg-surface-2 px-4 py-3 text-[13px] text-text-2">
@@ -135,8 +136,8 @@ export default function WorkspaceSettingsPage() {
             <span className="mono">{entry}</span> — landing, signup, and your team’s usual login.
           </p>
           <p className="mt-2">
-            <span className="font-medium text-text">Custom domain:</span> sign-in only, branded like
-            a self-hosted install. No public signup on that host.
+            <span className="font-medium text-text">Per workspace:</span> DNS CNAME + this screen.
+            Custom domain is sign-in only and branded; no public signup on that host.
           </p>
         </div>
         <Button type="submit" size="sm" disabled={saving}>

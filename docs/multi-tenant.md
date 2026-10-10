@@ -7,34 +7,31 @@ One Mailslip deploy serves everyone.
 | Host | Experience |
 | --- | --- |
 | **Platform entry** (`mailslip.uselinqr.io`) | General Mailslip: landing, signup, create a workspace |
-| **Custom domain** (`mail.acme.com`) | Self-hosted style: sign-in only, your brand, that workspace only |
+| **Custom domain** (`inbox.uselinqr.io`, `mail.acme.com`) | Self-hosted style: sign-in only, your brand, that workspace only |
 
-People always start on the platform. In **Settings → Workspace**, an owner/admin attaches a custom domain and brand. Point DNS (CNAME) at the platform, then open that hostname for the private inbox.
+## Per workspace (DNS + Mailslip only)
 
-No CLI is required for tenants.
+1. **DNS** — CNAME the hostname to the platform entry, **proxied** through Cloudflare (orange cloud), e.g. `inbox.uselinqr.io` → `mailslip.uselinqr.io`.
+2. **Mailslip** — **Settings → Workspace**: set brand + custom domain, save.
+3. Open `https://your-domain/login`.
 
-## Environment
+No per-domain setup in Railway (or similar). Cloudflare terminates HTTPS for hostnames on your zone and forwards to the app; Mailslip picks the workspace from the `Host` header.
+
+For a hostname on **another** company’s DNS, they still only CNAME to your platform; you save the domain in Mailslip the same way (keep the zone/proxy arrangement that covers that traffic).
+
+## Platform env (once)
 
 ```bash
 NEXTAUTH_URL=https://mailslip.uselinqr.io
-# Comma-separated platform entry hosts (plus NEXTAUTH_URL host is always included)
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
 ```
 
-TLS: terminate on your host (Railway / Cloudflare). Add each customer hostname there as well when they configure a custom domain.
-
-## Settings
+## Settings fields
 
 **Settings → Workspace**
 
 - Workspace name  
 - Brand name (tab titles on the custom domain)  
-- Custom domain (optional)
+- Custom domain  
 
-Saving a custom domain marks that host as self-hosted (no public signup). Clearing it returns the workspace to platform-only access.
-
-## DNS for a customer
-
-1. Customer sets `mail.acme.com` CNAME → your platform host (or ALIAS/A as required).  
-2. Admin enters `mail.acme.com` under Workspace and saves.  
-3. Visit `https://mail.acme.com/login` — branded, sign-in only.
+Saving a custom domain makes that host self-hosted (no public signup). Clearing it returns the workspace to platform-only access.
