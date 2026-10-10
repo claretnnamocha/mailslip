@@ -7,7 +7,7 @@ One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 | Host | Experience | Tenant key |
 | --- | --- | --- |
 | **Platform** `mailslip.uselinqr.io` | Landing, signup, team login | Session |
-| **Slug** `{slug}.mailslip.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
+| **Slug** `{slug}.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
 | **BYOD** e.g. `mail.acme.com` | Sign-in only, workspace brand | `Host` → `Workspace.customDomain` |
 
 **Slug and custom domain are independent.** A workspace can use one, the other, or both. They do not need to match (e.g. slug `acme` + custom domain `inbox.client.com` is fine). Both hosts resolve to that workspace.
@@ -17,9 +17,9 @@ One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 ### Slug
 
 1. **Settings → Workspace**: set **slug** (e.g. `acme`) + brand → Save.
-2. Open `https://acme.mailslip.uselinqr.io/login`.
+2. Open `https://acme.uselinqr.io/login`.
 
-No per-tenant DNS. Operator configures wildcard once (below).
+No per-tenant DNS. Operator configures wildcard once (below). Prefer `{slug}.uselinqr.io` so free Universal SSL covers it — avoid `{slug}.mailslip.uselinqr.io` unless you pay for Advanced Certificate Manager.
 
 ### Custom domain (BYOD)
 
@@ -31,8 +31,8 @@ No per-tenant DNS. Operator configures wildcard once (below).
 
 ```bash
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
-# {slug}.mailslip.uselinqr.io — defaults to platform host if unset
-MAILSLIP_TENANT_BASE_DOMAIN=mailslip.uselinqr.io
+# {slug}.uselinqr.io — defaults to parent of platform host (free *.zone cert)
+# MAILSLIP_TENANT_BASE_DOMAIN=uselinqr.io
 MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
@@ -43,15 +43,15 @@ CLOUDFLARE_API_TOKEN=
 
 ## Operator DNS (uselinqr.io, once)
 
-### Wildcard slug hosts
+### Wildcard slug hosts (free Universal SSL)
 
 | Type | Name | Target | Proxy |
 | --- | --- | --- | --- |
-| CNAME | `*.mailslip` | `mailslip.uselinqr.io` | Proxied |
+| CNAME | `*` | `mailslip.uselinqr.io` | Proxied |
 
-Or point `*.mailslip` at the same originless SaaS path your Worker `*/*` route already covers.
+→ `acme.uselinqr.io` covered by Universal SSL `*.uselinqr.io`. **Do not buy Advanced Certificate Manager** for this.
 
-**TLS:** Universal SSL `*.uselinqr.io` does **not** cover `*.mailslip.uselinqr.io`. Add an Advanced Certificate (or Total TLS) for `*.mailslip.uselinqr.io` + `mailslip.uselinqr.io`.
+(Only if you insist on `*.mailslip.uselinqr.io`: that needs Advanced Certificate Manager ~$10/mo — not required.)
 
 ### Cloudflare for SaaS (BYOD)
 

@@ -68,12 +68,17 @@ export function platformHosts(): string[] {
 
 /**
  * Base for `{slug}.{base}` tenant hosts.
- * Default = primary platform host → gbese.mailslip.uselinqr.io
+ * Default = parent of platform host → gbese.uselinqr.io (covered by free
+ * Universal SSL *.uselinqr.io). Use MAILSLIP_TENANT_BASE_DOMAIN=mailslip.uselinqr.io
+ * only if you have an Advanced Certificate for *.mailslip.uselinqr.io.
  */
 export function tenantBaseDomain(): string {
   const configured = normalizeHost(process.env.MAILSLIP_TENANT_BASE_DOMAIN);
   if (configured) return configured;
-  return platformHosts()[0] || "mailslip.uselinqr.io";
+  const platform = platformHosts()[0] || "mailslip.uselinqr.io";
+  const parts = platform.split(".").filter(Boolean);
+  if (parts.length >= 3) return parts.slice(1).join(".");
+  return platform;
 }
 
 export function tenantHostFromSlug(slug: string): string {
