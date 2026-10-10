@@ -15,12 +15,38 @@ export type HostContext = {
   tenant: TenantWorkspace | null;
 };
 
+const RESERVED_SLUGS = new Set([
+  "www",
+  "mail",
+  "cname",
+  "api",
+  "app",
+  "admin",
+  "static",
+  "assets",
+  "cdn",
+  "saas-origin",
+  "fallback",
+  "status",
+  "docs",
+  "help",
+  "support",
+  "auth",
+  "login",
+  "register",
+]);
+
 function normalizeHost(raw: string | null | undefined) {
   if (!raw) return "";
   return raw.split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
 }
 
 function authHost() {
+  const fromEnv = (process.env.MAILSLIP_PLATFORM_HOST || "")
+    .split(",")
+    .map((value) => normalizeHost(value))
+    .find(Boolean);
+  if (fromEnv) return fromEnv;
   try {
     return normalizeHost(new URL(process.env.NEXTAUTH_URL || "http://localhost:3000").host);
   } catch {
@@ -38,6 +64,48 @@ export function platformHosts(): string[] {
   const primary = authHost();
   if (primary) hosts.add(primary);
   return [...hosts];
+}
+
+/**
+ * Base for `{slug}.{base}` tenant hosts.
+ * Default = primary platform host → gbese.mailslip.uselinqr.io
+ */
+export function tenantBaseDomain(): string {
+  const configured = normalizeHost(process.env.MAILSLIP_TENANT_BASE_DOMAIN);
+  if (configured) return configured;
+  return platformHosts()[0] || "mailslip.uselinqr.io";
+}
+
+export function tenantHostFromSlug(slug: string): string {
+  return `${slug}.${tenantBaseDomain()}`;
+}
+
+/** Extract slug from gbese.mailslip.uselinqr.io → "gbese". */
+export function slugFromTenantHost(hostRaw: string | null | undefined): string | null {
+  const host = normalizeHost(hostRaw);
+  const base = tenantBaseDomain();
+  if (!host || !base || host === base) return null;
+  if (!host.endsWith(`.${base}`)) return null;
+  const slug = host.slice(0, -(base.length + 1));
+  if (!slug || slug.includes(".")) return null;
+  return slug;
+}
+
+export function normalizeSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\..*$/, "")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
+
+export function isValidSlug(slug: string): boolean {
+  if (!slug || slug.length < 2 || slug.length > 63) return false;
+  if (RESERVED_SLUGS.has(slug)) return false;
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug);
 }
 
 export function isPlatformHost(hostRaw: string | null | undefined) {
@@ -69,6 +137,15 @@ export async function resolveHostContext(
     return { kind: "platform", host: "", tenant: null };
   }
 
+  const slug = slugFromTenantHost(host);
+  if (slug) {
+    const tenant = await prisma.workspace.findFirst({
+      where: { slug },
+      select: tenantSelect,
+    });
+    return { kind: "tenant", host, tenant };
+  }
+
   const tenant = await prisma.workspace.findFirst({
     where: { customDomain: host },
     select: tenantSelect,
@@ -89,7 +166,7 @@ export async function getRequestHostContext(): Promise<HostContext> {
   return resolveHostContext(await getRequestHost());
 }
 
-/** Workspace bound to this custom domain, if any. Null on the platform entry. */
+/** Workspace bound to this custom domain / slug host, if any. Null on the platform entry. */
 export async function getRequestTenant(): Promise<TenantWorkspace | null> {
   const ctx = await getRequestHostContext();
   return ctx.kind === "tenant" ? ctx.tenant : null;
@@ -100,7 +177,7 @@ export function tenantHostingMode(ctx: HostContext | TenantWorkspace | null): Ho
   if (ctx && "kind" in ctx) {
     return ctx.kind === "platform" ? "cloud" : "self-hosted";
   }
-  if (ctx && "customDomain" in ctx && ctx.customDomain) return "self-hosted";
+  if (ctx && "customDomain" in ctx && (ctx.customDomain || ctx.slug)) return "self-hosted";
   // Env fallback for scripts / no request
   const raw = (process.env.MAILSLIP_MODE || "cloud")
     .trim()

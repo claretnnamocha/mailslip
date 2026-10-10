@@ -1,80 +1,70 @@
-# Platform entry + custom domains
+# Platform entry + tenant hosts
 
 One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 
-## Product rules
+## Hosts
 
-| Tier | Host | Tenant key |
+| Host | Experience | Tenant key |
 | --- | --- | --- |
-| **Free** | Static `mailslip.uselinqr.io` only (no per-user slug) | Session / login |
-| **Paid** | Customer BYOD (`alice.com`, `gbese.fun`) | `Host` → workspace |
+| **Platform** `mailslip.uselinqr.io` | Landing, signup, team login | Session |
+| **Slug** `gbese.mailslip.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
+| **BYOD** `gbese.fun` | Same workspace as the slug | `Host` → `Workspace.customDomain` |
 
-Customers **CNAME** to `MAILSLIP_CNAME_TARGET` (e.g. `cname.mailslip.uselinqr.io`).
+`gbese.fun` and `gbese.mailslip.uselinqr.io` resolve to the **same** workspace when slug is `gbese` and custom domain is `gbese.fun`.
 
-**Never** CNAME customers to Railway or to `mailslip.uselinqr.io`.
+## Per workspace
 
-## Per workspace (paid — DNS + Mailslip only)
+### Slug (recommended default)
 
-1. **DNS** — CNAME customer hostname → `cname.mailslip.uselinqr.io` (proxied OK).
-2. **Mailslip** — **Settings → Workspace**: brand + custom domain → Save  
-   (registers Cloudflare custom hostname when `CLOUDFLARE_*` is set; requires paid plan).
+1. **Settings → Workspace**: set **slug** (e.g. `gbese`) + brand → Save.
+2. Open `https://gbese.mailslip.uselinqr.io/login`.
+
+No per-tenant DNS. Operator configures wildcard once (below).
+
+### Custom domain (BYOD)
+
+1. DNS: CNAME customer hostname → `cname.mailslip.uselinqr.io` (proxied OK).
+2. **Settings → Workspace**: set custom domain → Save (registers Cloudflare custom hostname when `CLOUDFLARE_*` is set).
 3. Open `https://your-domain/login`.
 
 ## Platform env (once)
 
 ```bash
-# Prefer platform host for tenancy; avoid pinning Auth.js to one URL in prod.
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
-# Optional: NEXTAUTH_URL is copied into MAILSLIP_PLATFORM_HOST then cleared at boot
-# so custom-domain sign-in keeps cookies/callbacks on the customer host.
+# {slug}.mailslip.uselinqr.io — defaults to platform host if unset
+MAILSLIP_TENANT_BASE_DOMAIN=mailslip.uselinqr.io
 MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
 
-# BYOD allowed for all by default. Enforce paid later with:
-# MAILSLIP_BYOD_REQUIRE_PAID=1
-# MAILSLIP_PAID_WORKSPACE_IDS=cuid1,cuid2
-# Or Workspace.plan = "paid"
+# Omit NEXTAUTH_URL / AUTH_URL in production (Auth.js uses request Host).
+# BYOD paid gate (optional): MAILSLIP_BYOD_REQUIRE_PAID=1
 ```
 
+## Operator DNS (uselinqr.io, once)
 
-## Operator setup (Cloudflare for SaaS, once)
+### Wildcard slug hosts
 
-On zone **uselinqr.io** ([Workers as fallback origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/)):
+| Type | Name | Target | Proxy |
+| --- | --- | --- | --- |
+| CNAME | `*.mailslip` | `mailslip.uselinqr.io` | Proxied |
 
-1. Enable **Cloudflare for SaaS** / Custom Hostnames.
-2. Deploy [`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js) (proxies to `mailslip.uselinqr.io`, sets **`X-Mailslip-Host`**).
-3. **DNS** — create an **originless** fallback record (proxied):
+Or point `*.mailslip` at the same originless SaaS path your Worker `*/*` route already covers.
 
-   | Type | Name | Content | Proxy |
-   | --- | --- | --- | --- |
-   | AAAA | `saas-origin` | `100::` | Proxied |
+**TLS:** Universal SSL `*.uselinqr.io` does **not** cover `*.mailslip.uselinqr.io`. Add an Advanced Certificate (or Total TLS) for `*.mailslip.uselinqr.io` + `mailslip.uselinqr.io`.
 
-   (If `saas-origin` already points at a Worker custom domain, edit it to `AAAA 100::` instead.)
-4. **Custom Hostnames → Fallback Origin** = `saas-origin.uselinqr.io` (Active).
-5. **Workers → mailslip-saas-origin → Triggers / Routes** (on zone `uselinqr.io`):
+### Cloudflare for SaaS (BYOD)
 
-   | Route | Worker |
-   | --- | --- |
-   | `*/*` | `mailslip-saas-origin` |
-   | `mailslip.uselinqr.io/*` | **None** (bypass — goes to Railway) |
-   | `cname.mailslip.uselinqr.io/*` | **None** (optional) |
+See prior setup: originless fallback, Worker route `*/*`, `mailslip.uselinqr.io/*` → None, Fallback Origin Active, `cname.mailslip` → platform. Worker sets `X-Mailslip-Host` for custom hostnames.
 
-   Custom hostnames (e.g. `gbese.fun`) enter this zone and match `*/*` → Worker. Do **not** rely on a Worker custom domain alone for SaaS traffic.
-6. Proxied DNS: `cname.mailslip` → `mailslip.uselinqr.io`.
-7. Railway: add **only** `mailslip.uselinqr.io`. Confirm https://mailslip.uselinqr.io works.
-
-## Why “train has not arrived” / 522
-
-- Railway 404 = customer `Host` hit Railway (no SaaS Worker path).
-- Cloudflare **522** after hostname is Active = Fallback Origin set, but no zone Worker route `*/*` (Worker custom domain does not receive vanity Host traffic). Fix routes as above — **not** Railway Custom Domain × N.
+Slug subdomains on your zone do **not** need Custom Hostnames — only external BYOD domains do.
 
 ## Settings
 
 **Settings → Workspace**
 
 - Workspace name / brand  
-- Custom domain (paid only)  
-- Cloudflare hostname + certificate status when SaaS is configured  
+- **Slug** → `{slug}.mailslip.uselinqr.io`  
+- **Custom domain** (optional BYOD) + Cloudflare status  
 
-Saving a custom domain sets mode to self-hosted (no public signup). Clearing it returns platform-only access and removes the Cloudflare custom hostname.
+Saving a slug or custom domain makes those hosts self-hosted (no public signup). Clearing both returns platform-only access.

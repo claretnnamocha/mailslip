@@ -19,6 +19,7 @@ export async function GET() {
       ? {
           id: tenant.id,
           name: tenant.name,
+          slug: tenant.slug,
           brandName: tenant.brandName,
           customDomain: tenant.customDomain,
         }

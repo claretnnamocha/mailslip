@@ -43,9 +43,9 @@ npm run docker:down    # stop all
 npm run docker:restart # rebuild/restart only the app
 ```
 
-**Platform entry** (e.g. `mailslip.uselinqr.io`): landing + signup. Set `MAILSLIP_PLATFORM_HOST` / `NEXTAUTH_URL`.
+**Platform entry** (e.g. `mailslip.uselinqr.io`): landing + signup. Set `MAILSLIP_PLATFORM_HOST`.
 
-**Custom domains (paid)**: DNS CNAME to `MAILSLIP_CNAME_TARGET` (not the platform entry / Railway) + **Settings → Workspace**. Free = `mailslip.uselinqr.io` only. See [`docs/multi-tenant.md`](docs/multi-tenant.md).
+**Slug hosts**: `{slug}.mailslip.uselinqr.io` — set slug in **Settings → Workspace** (wildcard DNS once). Same workspace as optional BYOD custom domain. See [`docs/multi-tenant.md`](docs/multi-tenant.md).
 
 Optional first-user CLI (air‑gapped installs only): [`docs/self-hosted-seed.md`](docs/self-hosted-seed.md) / `npm run seed:owner`.
 

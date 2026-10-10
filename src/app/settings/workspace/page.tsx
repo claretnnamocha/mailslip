@@ -16,12 +16,15 @@ type DomainStatus = {
 type WorkspaceInfo = {
   id: string;
   name: string;
+  slug?: string | null;
   brandName?: string | null;
   customDomain?: string | null;
   mode: string;
   plan: string;
   allowsCustomDomain: boolean;
   platformHosts: string[];
+  tenantBaseDomain: string;
+  slugHost?: string | null;
   cnameTarget: string;
   cloudflareSaas: boolean;
   domainStatus?: DomainStatus | null;
@@ -33,8 +36,11 @@ export default function WorkspaceSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [brandName, setBrandName] = useState("");
+  const [slug, setSlug] = useState("");
   const [customDomain, setCustomDomain] = useState("");
   const [platformHosts, setPlatformHosts] = useState<string[]>([]);
+  const [tenantBase, setTenantBase] = useState("mailslip.uselinqr.io");
+  const [slugHost, setSlugHost] = useState<string | null>(null);
   const [cname, setCname] = useState("cname.mailslip.uselinqr.io");
   const [saas, setSaas] = useState(false);
   const [plan, setPlan] = useState("free");
@@ -44,8 +50,11 @@ export default function WorkspaceSettingsPage() {
   function apply(data: WorkspaceInfo) {
     setName(data.name || "");
     setBrandName(data.brandName || "");
+    setSlug(data.slug || "");
     setCustomDomain(data.customDomain || "");
     setPlatformHosts(data.platformHosts || []);
+    setTenantBase(data.tenantBaseDomain || "mailslip.uselinqr.io");
+    setSlugHost(data.slugHost || null);
     setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
     setSaas(Boolean(data.cloudflareSaas));
     setPlan(data.plan || "free");
@@ -78,17 +87,22 @@ export default function WorkspaceSettingsPage() {
         body: JSON.stringify({
           name,
           brandName: brandName.trim() || null,
+          slug: slug.trim() || null,
           customDomain: customDomain.trim() || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save");
       apply(data as WorkspaceInfo);
-      toast.success(
-        data.customDomain
-          ? `Saved — CNAME your domain to ${data.cnameTarget || cname}, then open it to sign in`
-          : "Workspace updated",
-      );
+      if (data.slugHost) {
+        toast.success(`Saved — open https://${data.slugHost}/login`);
+      } else if (data.customDomain) {
+        toast.success(
+          `Saved — CNAME your domain to ${data.cnameTarget || cname}, then open it to sign in`,
+        );
+      } else {
+        toast.success("Workspace updated");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save");
     } finally {
@@ -118,13 +132,16 @@ export default function WorkspaceSettingsPage() {
 
   const entry = platformHosts[0] || "mailslip.uselinqr.io";
   const byodLocked = !allowsByod;
+  const previewHost = slug.trim()
+    ? `${slug.trim().toLowerCase()}.${tenantBase}`
+    : `your-slug.${tenantBase}`;
 
   return (
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Workspace</h1>
       <p className="mt-2 max-w-xl text-[15px] text-text-2">
-        Attach a custom domain for a private, self-hosted-style experience (sign-in only, your
-        brand) via DNS + this screen — never Railway.
+        Set a slug for a Mailslip subdomain, or attach your own domain. Same workspace either way —
+        sign-in only, your brand.
       </p>
 
       <form
@@ -143,11 +160,33 @@ export default function WorkspaceSettingsPage() {
         </div>
         <div>
           <Input
+            label="Slug"
+            mono
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder="gbese"
+          />
+          <p className="mt-1.5 text-[12px] text-text-3">
+            Your workspace URL:{" "}
+            <span className="mono text-text">https://{previewHost}</span>
+            {slugHost ? (
+              <>
+                {" "}
+                ·{" "}
+                <a className="text-accent" href={`https://${slugHost}/login`}>
+                  Open login
+                </a>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div>
+          <Input
             label="Custom domain"
             mono
             value={customDomain}
             onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="mail.acme.com"
+            placeholder="gbese.fun"
           />
           {byodLocked ? (
             <p className="mt-1.5 text-[12px] text-text-3">
@@ -156,9 +195,8 @@ export default function WorkspaceSettingsPage() {
             </p>
           ) : (
             <p className="mt-1.5 text-[12px] text-text-3">
-              In DNS, CNAME this hostname to <span className="mono">{cname}</span> (proxied). Do{" "}
-              <span className="font-medium text-text">not</span> point at the platform entry or
-              Railway. Save here after DNS — leave blank for platform-only access.
+              Optional BYOD. CNAME to <span className="mono">{cname}</span> (proxied). Same
+              workspace as your slug host — e.g. gbese.fun ≡ gbese.{tenantBase}.
             </p>
           )}
         </div>
@@ -184,20 +222,21 @@ export default function WorkspaceSettingsPage() {
           <p>
             <span className="font-medium text-text">Plan:</span>{" "}
             <span className="mono">{plan}</span>
-            {allowsByod ? " (BYOD enabled)" : " (platform host only)"}
+            {allowsByod ? " (BYOD enabled)" : " (slug + platform)"}
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Platform entry:</span>{" "}
             <span className="mono">{entry}</span> — landing, signup, team login.
           </p>
           <p className="mt-2">
-            <span className="font-medium text-text">DNS target:</span>{" "}
-            <span className="mono">{cname}</span> — paid customers CNAME here only.
+            <span className="font-medium text-text">Slug hosts:</span>{" "}
+            <span className="mono">*.{tenantBase}</span> — set slug only; DNS wildcard is operator
+            setup once.
           </p>
           <p className="mt-2">
-            <span className="font-medium text-text">Per workspace:</span> DNS CNAME + this screen.
-            Custom domain is sign-in only and branded; no public signup on that host.
-            {saas ? " Cloudflare registers the hostname when you save." : null}
+            <span className="font-medium text-text">Custom domain DNS:</span>{" "}
+            <span className="mono">{cname}</span>
+            {saas ? " — Cloudflare registers when you save." : null}
           </p>
         </div>
         <Button type="submit" size="sm" disabled={saving}>
