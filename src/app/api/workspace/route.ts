@@ -9,6 +9,7 @@ import {
   platformHosts,
   tenantBaseDomain,
   tenantHostFromSlug,
+  tenantSlugSuffix,
 } from "@/lib/tenant";
 import { cnameTarget } from "@/lib/cname-target";
 import {
@@ -50,6 +51,7 @@ async function workspacePayload(
       ? await getCustomHostnameStatus(workspace.customDomain)
       : null;
   const base = tenantBaseDomain();
+  const slugSuffix = tenantSlugSuffix();
 
   return {
     id: workspace.id,
@@ -63,6 +65,7 @@ async function workspacePayload(
     role,
     platformHosts: platformHosts(),
     tenantBaseDomain: base,
+    tenantSlugSuffix: slugSuffix,
     slugHost: workspace.slug ? tenantHostFromSlug(workspace.slug) : null,
     cnameTarget: cnameTarget(),
     cloudflareSaas: cloudflareSaasConfigured(),

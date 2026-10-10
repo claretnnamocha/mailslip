@@ -24,6 +24,7 @@ type WorkspaceInfo = {
   allowsCustomDomain: boolean;
   platformHosts: string[];
   tenantBaseDomain: string;
+  tenantSlugSuffix: string;
   slugHost?: string | null;
   cnameTarget: string;
   cloudflareSaas: boolean;
@@ -39,7 +40,8 @@ export default function WorkspaceSettingsPage() {
   const [slug, setSlug] = useState("");
   const [customDomain, setCustomDomain] = useState("");
   const [platformHosts, setPlatformHosts] = useState<string[]>([]);
-  const [tenantBase, setTenantBase] = useState("mailslip.uselinqr.io");
+  const [tenantBase, setTenantBase] = useState("uselinqr.io");
+  const [slugSuffix, setSlugSuffix] = useState("-mail");
   const [slugHost, setSlugHost] = useState<string | null>(null);
   const [cname, setCname] = useState("cname.mailslip.uselinqr.io");
   const [saas, setSaas] = useState(false);
@@ -53,7 +55,8 @@ export default function WorkspaceSettingsPage() {
     setSlug(data.slug || "");
     setCustomDomain(data.customDomain || "");
     setPlatformHosts(data.platformHosts || []);
-    setTenantBase(data.tenantBaseDomain || "mailslip.uselinqr.io");
+    setTenantBase(data.tenantBaseDomain || "uselinqr.io");
+    setSlugSuffix(data.tenantSlugSuffix || "-mail");
     setSlugHost(data.slugHost || null);
     setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
     setSaas(Boolean(data.cloudflareSaas));
@@ -133,8 +136,8 @@ export default function WorkspaceSettingsPage() {
   const entry = platformHosts[0] || "mailslip.uselinqr.io";
   const byodLocked = !allowsByod;
   const previewHost = slug.trim()
-    ? `${slug.trim().toLowerCase()}.${tenantBase}`
-    : `your-slug.${tenantBase}`;
+    ? `${slug.trim().toLowerCase()}${slugSuffix}.${tenantBase}`
+    : `your-slug${slugSuffix}.${tenantBase}`;
 
   return (
     <div>
@@ -230,8 +233,8 @@ export default function WorkspaceSettingsPage() {
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Slug hosts:</span>{" "}
-            <span className="mono">*.{tenantBase}</span> — set slug only; DNS wildcard is operator
-            setup once.
+            <span className="mono">*{slugSuffix}.{tenantBase}</span> — set slug only; DNS wildcard
+            is operator setup once (free Universal SSL).
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Custom domain DNS:</span>{" "}

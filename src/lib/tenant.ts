@@ -67,47 +67,67 @@ export function platformHosts(): string[] {
 }
 
 /**
- * Base for `{slug}.{base}` tenant hosts.
- * Default = platform host → gbese.mailslip.uselinqr.io (keeps *.uselinqr.io free
- * for other products). Requires Cloudflare Advanced Certificate for
- * *.mailslip.uselinqr.io — or set MAILSLIP_TENANT_BASE_DOMAIN to another zone
- * you dedicate to Mailslip.
+ * Apex for slug hosts. Default = parent of platform host
+ * (mailslip.uselinqr.io → uselinqr.io) so labels stay one deep for free
+ * Universal SSL (*.uselinqr.io).
  */
 export function tenantBaseDomain(): string {
   const configured = normalizeHost(process.env.MAILSLIP_TENANT_BASE_DOMAIN);
   if (configured) return configured;
-  return platformHosts()[0] || "mailslip.uselinqr.io";
+  const platform = platformHosts()[0] || "mailslip.uselinqr.io";
+  const parts = platform.split(".").filter(Boolean);
+  if (parts.length >= 3) return parts.slice(1).join(".");
+  return platform;
+}
+
+/**
+ * Label suffix before the apex. Default "-mail" → gbese-mail.uselinqr.io
+ * (avoids colliding with other *.uselinqr.io apps; free SSL).
+ */
+export function tenantSlugSuffix(): string {
+  const raw = (process.env.MAILSLIP_TENANT_SLUG_SUFFIX ?? "-mail").trim().toLowerCase();
+  if (!raw) return "-mail";
+  return raw.startsWith("-") ? raw : `-${raw}`;
 }
 
 export function tenantHostFromSlug(slug: string): string {
-  return `${slug}.${tenantBaseDomain()}`;
+  return `${slug}${tenantSlugSuffix()}.${tenantBaseDomain()}`;
 }
 
-/** Extract slug from gbese.mailslip.uselinqr.io → "gbese". */
+/** Extract slug from gbese-mail.uselinqr.io → "gbese". */
 export function slugFromTenantHost(hostRaw: string | null | undefined): string | null {
   const host = normalizeHost(hostRaw);
   const base = tenantBaseDomain();
+  const suffix = tenantSlugSuffix();
   if (!host || !base || host === base) return null;
   if (!host.endsWith(`.${base}`)) return null;
-  const slug = host.slice(0, -(base.length + 1));
-  if (!slug || slug.includes(".")) return null;
+  const label = host.slice(0, -(base.length + 1));
+  if (!label || label.includes(".") || !label.endsWith(suffix)) return null;
+  const slug = label.slice(0, -suffix.length);
+  if (!slug || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug)) return null;
   return slug;
 }
 
 export function normalizeSlug(value: string): string {
+  const suffix = tenantSlugSuffix();
+  const maxSlug = Math.max(2, 63 - suffix.length);
   return value
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\..*$/, "")
+    .replace(new RegExp(`${suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "")
     .replace(/[^a-z0-9-]/g, "")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 63);
+    .slice(0, maxSlug);
 }
 
 export function isValidSlug(slug: string): boolean {
-  if (!slug || slug.length < 2 || slug.length > 63) return false;
+  const suffix = tenantSlugSuffix();
+  const maxSlug = Math.max(2, 63 - suffix.length);
+  if (!slug || slug.length < 2 || slug.length > maxSlug) return false;
   if (RESERVED_SLUGS.has(slug)) return false;
+  if (slug.endsWith(suffix.replace(/^-/, ""))) return false;
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug);
 }
 
