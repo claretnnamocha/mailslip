@@ -3,6 +3,9 @@ import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
+import { prepareAuthHostEnv, requestPublicOrigin } from "@/lib/public-url";
+
+prepareAuthHostEnv();
 
 const providers = [];
 
@@ -240,7 +243,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         !path.startsWith("/change-password") &&
         !path.startsWith("/api/settings/password")
       ) {
-        return Response.redirect(new URL("/change-password", request.nextUrl));
+        const origin = requestPublicOrigin(request.headers, request.nextUrl);
+        return Response.redirect(new URL("/change-password", origin));
       }
       return true;
     },

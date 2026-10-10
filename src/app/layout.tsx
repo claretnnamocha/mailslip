@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { resolveHosting, rootTitleMetadata } from "@/lib/hosting";
+import { platformOrigin } from "@/lib/public-url";
 import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
@@ -21,7 +22,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const { brand } = await resolveHosting();
   return {
-    metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
+    metadataBase: new URL(platformOrigin()),
     title: rootTitleMetadata(brand),
     description:
       "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",

@@ -23,8 +23,10 @@ Customers **CNAME** to `MAILSLIP_CNAME_TARGET` (e.g. `cname.mailslip.uselinqr.io
 ## Platform env (once)
 
 ```bash
-NEXTAUTH_URL=https://mailslip.uselinqr.io
+# Prefer platform host for tenancy; avoid pinning Auth.js to one URL in prod.
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
+# Optional: NEXTAUTH_URL is copied into MAILSLIP_PLATFORM_HOST then cleared at boot
+# so custom-domain sign-in keeps cookies/callbacks on the customer host.
 MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
