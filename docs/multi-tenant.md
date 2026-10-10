@@ -7,19 +7,21 @@ One Mailslip deploy serves everyone. **Never** add customer domains on Railway.
 | Host | Experience | Tenant key |
 | --- | --- | --- |
 | **Platform** `mailslip.uselinqr.io` | Landing, signup, team login | Session |
-| **Slug** `{slug}.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
+| **Slug** `{slug}.mailslip.uselinqr.io` | Sign-in only, workspace brand | `Host` → `Workspace.slug` |
 | **BYOD** e.g. `mail.acme.com` | Sign-in only, workspace brand | `Host` → `Workspace.customDomain` |
 
-**Slug and custom domain are independent.** A workspace can use one, the other, or both. They do not need to match (e.g. slug `acme` + custom domain `inbox.client.com` is fine). Both hosts resolve to that workspace.
+**Slug and custom domain are independent.** A workspace can use one, the other, or both. They do not need to match. Both hosts resolve to that workspace.
+
+Slug hosts stay under **`mailslip.uselinqr.io`** so the rest of `*.uselinqr.io` can be used by other products.
 
 ## Per workspace
 
 ### Slug
 
 1. **Settings → Workspace**: set **slug** (e.g. `acme`) + brand → Save.
-2. Open `https://acme.uselinqr.io/login`.
+2. Open `https://acme.mailslip.uselinqr.io/login`.
 
-No per-tenant DNS. Operator configures wildcard once (below). Prefer `{slug}.uselinqr.io` so free Universal SSL covers it — avoid `{slug}.mailslip.uselinqr.io` unless you pay for Advanced Certificate Manager.
+No per-tenant DNS. Operator configures wildcard + cert once (below).
 
 ### Custom domain (BYOD)
 
@@ -31,8 +33,7 @@ No per-tenant DNS. Operator configures wildcard once (below). Prefer `{slug}.use
 
 ```bash
 MAILSLIP_PLATFORM_HOST=mailslip.uselinqr.io
-# {slug}.uselinqr.io — defaults to parent of platform host (free *.zone cert)
-# MAILSLIP_TENANT_BASE_DOMAIN=uselinqr.io
+MAILSLIP_TENANT_BASE_DOMAIN=mailslip.uselinqr.io
 MAILSLIP_CNAME_TARGET=cname.mailslip.uselinqr.io
 CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=
@@ -43,19 +44,24 @@ CLOUDFLARE_API_TOKEN=
 
 ## Operator DNS (uselinqr.io, once)
 
-### Wildcard slug hosts (free Universal SSL)
+### Wildcard slug hosts
 
 | Type | Name | Target | Proxy |
 | --- | --- | --- | --- |
-| CNAME | `*` | `mailslip.uselinqr.io` | Proxied |
+| CNAME | `*.mailslip` | `mailslip.uselinqr.io` | Proxied |
 
-→ `acme.uselinqr.io` covered by Universal SSL `*.uselinqr.io`. **Do not buy Advanced Certificate Manager** for this.
+**TLS (required):** Universal SSL only covers `uselinqr.io` + `*.uselinqr.io`. It does **not** cover `*.mailslip.uselinqr.io`.
 
-(Only if you insist on `*.mailslip.uselinqr.io`: that needs Advanced Certificate Manager ~$10/mo — not required.)
+Subscribe to **Advanced Certificate Manager** (~$10/mo) and order a cert for:
+
+- `*.mailslip.uselinqr.io`
+- `mailslip.uselinqr.io`
+
+Without that cert, slug hosts fail with connection closed / TLS handshake errors. This does **not** take over other `*.uselinqr.io` hostnames.
 
 ### Cloudflare for SaaS (BYOD)
 
-See prior setup: originless fallback, Worker route `*/*`, `mailslip.uselinqr.io/*` → None, Fallback Origin Active, `cname.mailslip` → platform. Worker sets `X-Mailslip-Host` for custom hostnames.
+Originless fallback, Worker route `*/*`, `mailslip.uselinqr.io/*` → None, Fallback Origin Active, `cname.mailslip` → platform. Worker sets `X-Mailslip-Host` for custom hostnames.
 
 Slug subdomains on your zone do **not** need Custom Hostnames — only external BYOD domains do.
 

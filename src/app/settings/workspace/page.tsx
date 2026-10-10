@@ -39,7 +39,7 @@ export default function WorkspaceSettingsPage() {
   const [slug, setSlug] = useState("");
   const [customDomain, setCustomDomain] = useState("");
   const [platformHosts, setPlatformHosts] = useState<string[]>([]);
-  const [tenantBase, setTenantBase] = useState("uselinqr.io");
+  const [tenantBase, setTenantBase] = useState("mailslip.uselinqr.io");
   const [slugHost, setSlugHost] = useState<string | null>(null);
   const [cname, setCname] = useState("cname.mailslip.uselinqr.io");
   const [saas, setSaas] = useState(false);
@@ -53,7 +53,7 @@ export default function WorkspaceSettingsPage() {
     setSlug(data.slug || "");
     setCustomDomain(data.customDomain || "");
     setPlatformHosts(data.platformHosts || []);
-    setTenantBase(data.tenantBaseDomain || "uselinqr.io");
+    setTenantBase(data.tenantBaseDomain || "mailslip.uselinqr.io");
     setSlugHost(data.slugHost || null);
     setCname(data.cnameTarget || "cname.mailslip.uselinqr.io");
     setSaas(Boolean(data.cloudflareSaas));
