@@ -38,18 +38,34 @@ CLOUDFLARE_API_TOKEN=
 
 ## Operator setup (Cloudflare for SaaS, once)
 
-On zone **uselinqr.io**:
+On zone **uselinqr.io** ([Workers as fallback origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/)):
 
 1. Enable **Cloudflare for SaaS** / Custom Hostnames.
-2. Deploy [`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js) on **`saas-origin.uselinqr.io`**.  
-   Railway only accepts `Host: mailslip.uselinqr.io`. Workers cannot rewrite `Host` on `fetch`, so the Worker proxies to `mailslip.uselinqr.io` and sets **`X-Mailslip-Host`** to the customer domain (Mailslip reads that for tenancy).
-3. **Fallback Origin** = `saas-origin.uselinqr.io` (Active).
-4. Proxied DNS: `cname.mailslip` → `mailslip.uselinqr.io`.
-5. Railway: add **only** `mailslip.uselinqr.io` as a custom domain (one service). Confirm https://mailslip.uselinqr.io works.
+2. Deploy [`cloudflare-saas-origin-worker.js`](./cloudflare-saas-origin-worker.js) (proxies to `mailslip.uselinqr.io`, sets **`X-Mailslip-Host`**).
+3. **DNS** — create an **originless** fallback record (proxied):
 
-## Why “train has not arrived” / Application not found
+   | Type | Name | Content | Proxy |
+   | --- | --- | --- | --- |
+   | AAAA | `saas-origin` | `100::` | Proxied |
 
-DNS reached Railway with a customer `Host` that is not provisioned there. Fix = Cloudflare for SaaS + origin Worker — **not** Railway Custom Domain × N.
+   (If `saas-origin` already points at a Worker custom domain, edit it to `AAAA 100::` instead.)
+4. **Custom Hostnames → Fallback Origin** = `saas-origin.uselinqr.io` (Active).
+5. **Workers → mailslip-saas-origin → Triggers / Routes** (on zone `uselinqr.io`):
+
+   | Route | Worker |
+   | --- | --- |
+   | `*/*` | `mailslip-saas-origin` |
+   | `mailslip.uselinqr.io/*` | **None** (bypass — goes to Railway) |
+   | `cname.mailslip.uselinqr.io/*` | **None** (optional) |
+
+   Custom hostnames (e.g. `gbese.fun`) enter this zone and match `*/*` → Worker. Do **not** rely on a Worker custom domain alone for SaaS traffic.
+6. Proxied DNS: `cname.mailslip` → `mailslip.uselinqr.io`.
+7. Railway: add **only** `mailslip.uselinqr.io`. Confirm https://mailslip.uselinqr.io works.
+
+## Why “train has not arrived” / 522
+
+- Railway 404 = customer `Host` hit Railway (no SaaS Worker path).
+- Cloudflare **522** after hostname is Active = Fallback Origin set, but no zone Worker route `*/*` (Worker custom domain does not receive vanity Host traffic). Fix routes as above — **not** Railway Custom Domain × N.
 
 ## Settings
 

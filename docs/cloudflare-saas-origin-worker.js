@@ -5,10 +5,11 @@
  * serves Host: mailslip.uselinqr.io, so we fetch that URL and pass the customer
  * domain as X-Mailslip-Host (Mailslip tenancy reads it).
  *
- * Setup (once):
+ * Setup (once) — see docs/multi-tenant.md:
  * 1. Paste → Deploy; optional var ORIGIN_HOST=mailslip.uselinqr.io
- * 2. Domains → Add Domain → saas-origin.uselinqr.io
- * 3. Custom Hostnames → Fallback Origin → saas-origin.uselinqr.io (Active)
+ * 2. DNS: saas-origin AAAA 100:: (proxied, originless)
+ * 3. Fallback Origin = saas-origin.uselinqr.io
+ * 4. Worker route */* → this Worker; mailslip.uselinqr.io/* → None
  */
 
 const PLATFORM_ORIGIN = "https://mailslip.uselinqr.io";
