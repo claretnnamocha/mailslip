@@ -145,26 +145,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   callbacks: {
     async redirect({ url, baseUrl }) {
-      // Prefer relative targets so the browser stays on gbese.fun / current host.
-      if (url.startsWith("/")) return url;
+      // Always return an absolute URL (Auth.js client treats odd relatives as errors).
+      let base = baseUrl;
+      try {
+        if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
+      } catch {
+        base = platformOrigin();
+      }
+      if (url.startsWith("/")) return `${base}${url}`;
       try {
         const target = new URL(url);
-        if (isInternalHost(target.host)) {
-          return `${target.pathname}${target.search}${target.hash}` || "/";
-        }
-        let base = baseUrl;
-        try {
-          if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
-        } catch {
-          base = platformOrigin();
-        }
-        if (target.origin === base || target.origin === baseUrl) {
-          return `${target.pathname}${target.search}${target.hash}` || "/";
-        }
-        // Cross-origin absolute URLs from a bad AUTH_URL — keep path only.
-        return `${target.pathname}${target.search}${target.hash}` || "/";
+        const path = `${target.pathname}${target.search}${target.hash}` || "/";
+        if (isInternalHost(target.host)) return `${base}${path}`;
+        // Keep path on the resolved public base (BYOD / platform), never jump hosts.
+        return `${base}${path}`;
       } catch {
-        return "/";
+        return base;
       }
     },
     async jwt({ token, user, account, profile, trigger, session }) {

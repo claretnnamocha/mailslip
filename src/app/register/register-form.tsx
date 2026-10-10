@@ -6,7 +6,7 @@ import { signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { clientAuthRedirect } from "@/lib/auth-callback-url";
+import { getSession } from "next-auth/react";
 
 export function RegisterForm() {
   const [name, setName] = useState("");
@@ -51,17 +51,18 @@ export function RegisterForm() {
         return;
       }
 
-      const signInRes = await signIn("credentials", {
+      await signIn("credentials", {
         email,
         password,
         callbackUrl: "/onboarding",
         redirect: false,
       });
-      if (signInRes?.error) {
-        setError("Account created, but sign-in failed. Try signing in.");
+      const session = await getSession();
+      if (session?.user) {
+        window.location.replace("/onboarding");
         return;
       }
-      window.location.assign(clientAuthRedirect(signInRes?.url, "/onboarding"));
+      setError("Account created, but sign-in failed. Try signing in.");
     } catch {
       setError("Could not create account");
     } finally {

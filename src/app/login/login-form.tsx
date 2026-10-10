@@ -2,12 +2,11 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
 import { useHostingMode } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { clientAuthRedirect } from "@/lib/auth-callback-url";
 
 export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boolean }) {
   const hosting = useHostingMode();
@@ -44,24 +43,40 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
       .catch(() => setZitadelEnabled(false));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getSession().then((session) => {
+      if (!cancelled && session?.user) window.location.replace("/mail");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const res = await signIn("credentials", {
+      await signIn("credentials", {
         email,
         password,
         callbackUrl: "/mail",
         redirect: false,
       });
-      if (res?.error) {
-        setError("Invalid email or password");
+      // BYOD: Auth.js may return error/url quirks while still setting the session cookie.
+      const session = await getSession();
+      if (session?.user) {
+        window.location.replace("/mail");
         return;
       }
-      // Always same-origin — never follow an absolute mailslip / 0.0.0.0 URL.
-      window.location.assign(clientAuthRedirect(res?.url, "/mail"));
+      setError("Invalid email or password");
     } catch {
+      const session = await getSession().catch(() => null);
+      if (session?.user) {
+        window.location.replace("/mail");
+        return;
+      }
       setError("Sign-in failed. Try again.");
     } finally {
       setLoading(false);
