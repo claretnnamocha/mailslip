@@ -233,8 +233,11 @@ export default function WorkspaceSettingsPage() {
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Slug hosts:</span>{" "}
-            <span className="mono">*{slugSuffix}.{tenantBase}</span> — set slug only; DNS wildcard
-            is operator setup once (free Universal SSL).
+            <span className="mono">
+              {`{slug}${slugSuffix}.${tenantBase}`}
+            </span>{" "}
+            — set slug only; operator DNS is zone <span className="mono">*</span> → platform (free
+            Universal SSL; other hostnames keep their own records).
           </p>
           <p className="mt-2">
             <span className="font-medium text-text">Custom domain DNS:</span>{" "}

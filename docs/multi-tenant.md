@@ -51,11 +51,15 @@ CLOUDFLARE_API_TOKEN=
 
 ### Wildcard slug hosts
 
+Cloudflare only treats a leading `*.` as a wildcard. Mid-label names like `*-mail` are **literal** (not wildcards).
+
 | Type | Name | Target | Proxy |
 | --- | --- | --- | --- |
-| CNAME | `*-mail` | `mailslip.uselinqr.io` | Proxied |
+| CNAME | `*` | `mailslip.uselinqr.io` | Proxied |
 
-Covered by Universal SSL. You can remove any `*.mailslip` record used only for the old multi-level slug plan.
+That matches any **single** label under the zone, including `gbese-mail.uselinqr.io`. More specific records (`mail`, `staging`, `folio`, …) **win over** `*` and keep serving other products.
+
+Delete the invalid `*-mail` record if you created it. Covered by free Universal SSL `*.uselinqr.io`.
 
 ### Cloudflare for SaaS (BYOD)
 
