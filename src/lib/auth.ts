@@ -234,7 +234,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         path.startsWith("/login") ||
         (signupAllowed && path.startsWith("/register")) ||
         path.startsWith("/api/auth") ||
-        path.startsWith("/api/health");
+        path.startsWith("/api/health") ||
+        path.startsWith("/api/hosting");
       if (isPublic) return true;
       if (!session?.user?.id) return false;
       if (

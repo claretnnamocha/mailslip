@@ -4,15 +4,35 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { LogoMark } from "@/components/brand/logo";
+import { useHostingMode } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function LoginForm({ allowSignup }: { allowSignup: boolean }) {
+export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boolean }) {
+  const hosting = useHostingMode();
+  // Prefer hiding until runtime confirms cloud — avoids a stale self-hosted flash of signup.
+  const [allowSignup, setAllowSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [zitadelEnabled, setZitadelEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/hosting")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setAllowSignup(Boolean(data.allowSignup) && data.mode === "cloud");
+      })
+      .catch(() => {
+        if (!cancelled) setAllowSignup(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -38,6 +58,8 @@ export function LoginForm({ allowSignup }: { allowSignup: boolean }) {
     }
     window.location.href = res?.url || "/mail";
   }
+
+  const showSignup = allowSignup && allowSignupProp && hosting === "cloud";
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-bg px-6 py-10">
@@ -96,7 +118,7 @@ export function LoginForm({ allowSignup }: { allowSignup: boolean }) {
           )}
         </div>
 
-        {allowSignup && (
+        {showSignup && (
           <p className="mt-6 text-center text-[14px] text-text-2">
             New to Mailslip?{" "}
             <Link href="/register" className="font-medium text-accent">
