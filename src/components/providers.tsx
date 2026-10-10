@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useContext, useEffect } from "react";
-import { SessionProvider, signOut, useSession } from "next-auth/react";
+import { SessionProvider, useSession } from "next-auth/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DialogProvider } from "@/components/dialog-provider";
 import type { HostingMode } from "@/lib/hosting";
+import { clientSignOut } from "@/lib/client-sign-out";
 import { Toaster } from "sonner";
 
 const HostingContext = createContext<HostingMode>("cloud");
@@ -28,7 +29,7 @@ function SessionGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status !== "authenticated") return;
     if (session?.user?.id) return;
-    void signOut({ callbackUrl: "/login" });
+    void clientSignOut("/login");
   }, [status, session?.user?.id]);
 
   return <>{children}</>;

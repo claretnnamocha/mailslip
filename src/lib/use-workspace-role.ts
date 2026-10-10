@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
+import { clientSignOut } from "@/lib/client-sign-out";
 
 export function useWorkspaceRole() {
   const [role, setRole] = useState<string | null>(null);
@@ -12,7 +12,7 @@ export function useWorkspaceRole() {
     fetch("/api/team")
       .then(async (response) => {
         if (response.status === 401) {
-          await signOut({ callbackUrl: "/login" });
+          await clientSignOut("/login");
           return null;
         }
         return response.ok ? response.json() : null;

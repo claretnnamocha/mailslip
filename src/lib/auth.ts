@@ -146,21 +146,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async redirect({ url, baseUrl }) {
       // Always return an absolute URL (Auth.js client treats odd relatives as errors).
+      // Prefer Auth.js baseUrl (x-forwarded-host from middleware). Never follow
+      // arbitrary absolute hosts (open redirect); map internals → platform.
       let base = baseUrl;
       try {
         if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
       } catch {
         base = platformOrigin();
       }
-      if (url.startsWith("/")) return `${base}${url}`;
+      const origin = new URL(base).origin;
+      if (url.startsWith("/")) return `${origin}${url}`;
       try {
         const target = new URL(url);
         const path = `${target.pathname}${target.search}${target.hash}` || "/";
-        if (isInternalHost(target.host)) return `${base}${path}`;
-        // Keep path on the resolved public base (BYOD / platform), never jump hosts.
-        return `${base}${path}`;
+        if (isInternalHost(target.host)) return `${origin}${path}`;
+        if (target.origin === origin) return `${target.origin}${path}`;
+        return `${origin}${path}`;
       } catch {
-        return base;
+        return origin;
       }
     },
     async jwt({ token, user, account, profile, trigger, session }) {

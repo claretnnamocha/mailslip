@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { MessageList } from "./message-list";
 import { MessageView } from "./message-view";
 import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
+import { clientSignOut } from "@/lib/client-sign-out";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
@@ -53,7 +53,7 @@ export function MailShell() {
         fetch("/api/team"),
       ]);
       if (idRes.status === 401 || teamRes.status === 401) {
-        await signOut({ callbackUrl: "/login" });
+        await clientSignOut("/login");
         return;
       }
       const team = teamRes.ok ? await teamRes.json() : null;

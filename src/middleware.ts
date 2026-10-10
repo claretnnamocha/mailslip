@@ -3,15 +3,29 @@ import { auth } from "@/lib/auth";
 import { resolvePublicHost } from "@/lib/public-url";
 
 /**
- * Force a public Host for app pages. Do NOT rewrite headers on /api/auth —
- * mutating the request for POSTs can hang credentials sign-in (body stall).
+ * Force a public Host for app pages.
+ * For /api/auth: only set x-forwarded-host (Auth.js trustHost). Do not rewrite
+ * Host — that stalled credential POST bodies.
  */
 export default auth((req) => {
-  if (req.nextUrl.pathname.startsWith("/api/auth")) return;
-
   const publicHost = resolvePublicHost(req.headers);
   const currentForwarded = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim().toLowerCase();
   const currentHost = req.headers.get("host")?.split(",")[0]?.trim().toLowerCase();
+  const isAuthApi = req.nextUrl.pathname.startsWith("/api/auth");
+
+  if (isAuthApi) {
+    if (currentForwarded === publicHost) return;
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-forwarded-host", publicHost);
+    requestHeaders.set(
+      "x-forwarded-proto",
+      publicHost.startsWith("localhost") || publicHost.startsWith("127.") ? "http" : "https",
+    );
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+  }
+
   if (currentForwarded === publicHost && currentHost === publicHost) return;
 
   const requestHeaders = new Headers(req.headers);

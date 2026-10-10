@@ -1,8 +1,8 @@
 "use client";
 
-import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { useDialog } from "@/components/dialog-provider";
+import { clientSignOut } from "@/lib/client-sign-out";
 import { toast } from "sonner";
 
 export default function DangerSettingsPage() {
@@ -23,7 +23,7 @@ export default function DangerSettingsPage() {
       return;
     }
     toast.success("Account deleted");
-    await signOut({ callbackUrl: "/login" });
+    await clientSignOut("/login");
   }
 
   return (
