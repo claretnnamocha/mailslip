@@ -59,12 +59,12 @@ export function RegisterForm() {
       });
       if (signInRes?.error) {
         setError("Account created, but sign-in failed. Try signing in.");
-        setLoading(false);
         return;
       }
-      window.location.href = clientAuthRedirect(signInRes?.url, "/onboarding");
+      window.location.assign(clientAuthRedirect(signInRes?.url, "/onboarding"));
     } catch {
       setError("Could not create account");
+    } finally {
       setLoading(false);
     }
   }

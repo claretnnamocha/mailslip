@@ -48,18 +48,24 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("credentials", {
-      email,
-      password,
-      callbackUrl: "/mail",
-      redirect: false,
-    });
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid email or password");
-      return;
+    try {
+      const res = await signIn("credentials", {
+        email,
+        password,
+        callbackUrl: "/mail",
+        redirect: false,
+      });
+      if (res?.error) {
+        setError("Invalid email or password");
+        return;
+      }
+      // Always same-origin — never follow an absolute mailslip / 0.0.0.0 URL.
+      window.location.assign(clientAuthRedirect(res?.url, "/mail"));
+    } catch {
+      setError("Sign-in failed. Try again.");
+    } finally {
+      setLoading(false);
     }
-    window.location.href = clientAuthRedirect(res?.url, "/mail");
   }
 
   const showSignup = allowSignup && allowSignupProp && hosting === "cloud";

@@ -3,10 +3,12 @@ import { auth } from "@/lib/auth";
 import { resolvePublicHost } from "@/lib/public-url";
 
 /**
- * Force Auth.js / app code to see a public Host (customer domain or platform).
- * Railway's bind address (0.0.0.0:8080) must never become the callback URL.
+ * Force a public Host for app pages. Do NOT rewrite headers on /api/auth —
+ * mutating the request for POSTs can hang credentials sign-in (body stall).
  */
 export default auth((req) => {
+  if (req.nextUrl.pathname.startsWith("/api/auth")) return;
+
   const publicHost = resolvePublicHost(req.headers);
   const currentForwarded = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim().toLowerCase();
   const currentHost = req.headers.get("host")?.split(",")[0]?.trim().toLowerCase();
