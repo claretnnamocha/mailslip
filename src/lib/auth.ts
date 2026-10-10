@@ -145,23 +145,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   callbacks: {
     async redirect({ url, baseUrl }) {
-      let base = baseUrl;
-      try {
-        if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
-      } catch {
-        base = platformOrigin();
-      }
-      if (url.startsWith("/")) return `${base}${url}`;
+      // Prefer relative targets so the browser stays on gbese.fun / current host.
+      if (url.startsWith("/")) return url;
       try {
         const target = new URL(url);
         if (isInternalHost(target.host)) {
-          return `${base}${target.pathname}${target.search}${target.hash}`;
+          return `${target.pathname}${target.search}${target.hash}` || "/";
         }
-        if (target.origin === base || target.origin === baseUrl) return url;
+        let base = baseUrl;
+        try {
+          if (isInternalHost(new URL(baseUrl).host)) base = platformOrigin();
+        } catch {
+          base = platformOrigin();
+        }
+        if (target.origin === base || target.origin === baseUrl) {
+          return `${target.pathname}${target.search}${target.hash}` || "/";
+        }
+        // Cross-origin absolute URLs from a bad AUTH_URL — keep path only.
+        return `${target.pathname}${target.search}${target.hash}` || "/";
       } catch {
-        /* fall through */
+        return "/";
       }
-      return base;
     },
     async jwt({ token, user, account, profile, trigger, session }) {
       if (trigger === "update" && session?.mustChangePassword === false) {

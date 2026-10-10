@@ -1,16 +1,13 @@
-/** Client-side: never navigate to Railway's bind address after signIn. */
+/**
+ * After credentials signIn({ redirect: false }), always stay on the current
+ * browser host. Auth.js may return an absolute platform URL (NEXTAUTH_URL /
+ * bad forwarded host); following that drops __Host- session cookies.
+ */
 export function clientAuthRedirect(url: string | null | undefined, fallback: string): string {
   if (!url) return fallback;
   try {
-    const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : "http://localhost");
-    const host = parsed.hostname.toLowerCase();
-    if (host === "0.0.0.0" || host === "127.0.0.1" || host === "::" || host === "[::]") {
-      return `${parsed.pathname}${parsed.search}${parsed.hash}` || fallback;
-    }
-    if (typeof window !== "undefined" && parsed.origin === window.location.origin) {
-      return `${parsed.pathname}${parsed.search}${parsed.hash}` || fallback;
-    }
-    return url;
+    const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : "http://local");
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || fallback;
   } catch {
     return fallback;
   }
