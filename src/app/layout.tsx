@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { redirect } from "next/navigation";
 import { Providers } from "@/components/providers";
 import { resolveHosting, rootTitleMetadata } from "@/lib/hosting";
 import { platformOrigin } from "@/lib/public-url";
@@ -39,7 +40,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { mode, brand } = await resolveHosting();
+  const { context, tenant, mode, brand } = await resolveHosting();
+  // Unmapped slug/custom hosts (e.g. justdeyplay-mail…) → platform entry.
+  if (context.kind === "tenant" && !tenant) {
+    redirect(platformOrigin());
+  }
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
