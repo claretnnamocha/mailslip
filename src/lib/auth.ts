@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
+import { allowsPublicSignup } from "@/lib/hosting";
 import { verifyPassword } from "@/lib/password";
 
 const providers = [];
@@ -224,10 +225,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     authorized({ auth: session, request }) {
       const path = request.nextUrl.pathname;
+      const signupAllowed = allowsPublicSignup();
+      if (!signupAllowed && path.startsWith("/register")) {
+        return Response.redirect(new URL("/login", request.nextUrl));
+      }
       const isPublic =
         path === "/" ||
         path.startsWith("/login") ||
-        path.startsWith("/register") ||
+        (signupAllowed && path.startsWith("/register")) ||
         path.startsWith("/api/auth") ||
         path.startsWith("/api/health");
       if (isPublic) return true;

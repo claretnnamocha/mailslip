@@ -26,6 +26,15 @@ function isPgpBody(text?: string | null, html?: string | null) {
   return source.includes("-----BEGIN PGP MESSAGE-----");
 }
 
+function hasRemoteImages(html?: string | null) {
+  if (!html) return false;
+  return /<img[^>]+src=["']https?:\/\//i.test(html) || /url\(\s*['"]?https?:\/\//i.test(html);
+}
+
+function senderKey(address: string) {
+  return address.trim().toLowerCase();
+}
+
 export function MessageView() {
   const {
     selectedId,
@@ -39,7 +48,8 @@ export function MessageView() {
     openCompose,
   } = useMailStore();
   const { prompt, alert } = useDialog();
-  const [showRemote, setShowRemote] = useState(false);
+  const [showRemoteOnce, setShowRemoteOnce] = useState(false);
+  const [trustedSenders, setTrustedSenders] = useState<string[]>([]);
   const [headersOpen, setHeadersOpen] = useState(false);
   const [decrypted, setDecrypted] = useState<string | null>(null);
   const [decrypting, setDecrypting] = useState(false);
@@ -50,6 +60,8 @@ export function MessageView() {
   useEffect(() => {
     setDecrypted(null);
     setThreadMessages([]);
+    setShowRemoteOnce(false);
+    setTrustedSenders([]);
   }, [selectedId]);
 
   useEffect(() => {
@@ -113,6 +125,25 @@ export function MessageView() {
     };
   }, [selectedId, setLoadingMessage, setMessages, setSelectedMessage]);
 
+  useEffect(() => {
+    const pool = threadMessages.length > 0 ? threadMessages : selectedMessage ? [selectedMessage] : [];
+    const addresses = [
+      ...new Set(pool.map((message) => senderKey(message.from.address)).filter(Boolean)),
+    ];
+    if (addresses.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const params = new URLSearchParams({ addresses: addresses.join(",") });
+      const res = await fetch(`/api/settings/image-trust?${params}`);
+      if (!res.ok || cancelled) return;
+      const data = (await res.json()) as { trusted?: string[] };
+      if (!cancelled) setTrustedSenders(data.trusted || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, threadMessages, selectedMessage]);
+
   if (!selectedId) {
     return (
       <section className="hidden h-full flex-1 items-center justify-center bg-bg md:flex">
@@ -149,6 +180,34 @@ export function MessageView() {
 
   const current = selectedMessage;
   const opened = threadMessages.length > 0 ? threadMessages : [current];
+  const trustedSet = new Set(trustedSenders);
+
+  function imagesAllowed(message: MailMessage) {
+    return showRemoteOnce || trustedSet.has(senderKey(message.from.address));
+  }
+
+  const blockedImageSenders = [
+    ...new Set(
+      opened
+        .filter((message) => hasRemoteImages(message.html) && !imagesAllowed(message))
+        .map((message) => senderKey(message.from.address)),
+    ),
+  ];
+
+  async function alwaysAllowImages(address: string) {
+    const value = senderKey(address);
+    const res = await fetch("/api/settings/image-trust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: value }),
+    });
+    if (!res.ok) {
+      toast.error("Could not save image preference");
+      return;
+    }
+    setTrustedSenders((prev) => (prev.includes(value) ? prev : [...prev, value]));
+    toast.success(`Images allowed from ${value}`);
+  }
 
   function messageHtml(message: MailMessage) {
     if (decrypted && message.id === current.id) {
@@ -300,6 +359,31 @@ export function MessageView() {
           <p className="mt-1 text-[13px] text-text-3">{opened.length} messages in this thread</p>
         )}
 
+        {blockedImageSenders.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5 text-[12px] text-text-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>Remote images are blocked for privacy.</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <button
+                type="button"
+                className="font-medium text-accent"
+                onClick={() => setShowRemoteOnce(true)}
+              >
+                Show once
+              </button>
+              {blockedImageSenders.map((address) => (
+                <button
+                  key={address}
+                  type="button"
+                  className="font-medium text-accent"
+                  onClick={() => void alwaysAllowImages(address)}
+                >
+                  Always allow {address}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {opened.map((message, index) => {
           const pgpLocked = !decrypted && isPgpBody(message.text, message.html);
           return (
@@ -379,22 +463,13 @@ export function MessageView() {
 
               <article
                 className={`email-content mt-4 rounded-[12px] border border-border bg-email-sheet p-6 text-[15px] leading-[1.6] text-email-body shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
-                  showRemote ? "" : "block-remote"
+                  imagesAllowed(message) ? "" : "block-remote"
                 }`}
                 dangerouslySetInnerHTML={{ __html: messageHtml(message) }}
               />
             </div>
           );
         })}
-
-        {!showRemote && opened.some((message) => message.html?.includes("http")) && (
-          <div className="mt-4 flex items-center justify-between rounded-[10px] border border-border bg-surface px-3 py-2 text-[12px] text-text-2">
-            <span>Remote images are blocked.</span>
-            <button className="font-medium text-accent" onClick={() => setShowRemote(true)}>
-              Show
-            </button>
-          </div>
-        )}
       </div>
     </section>
   );

@@ -70,9 +70,10 @@ model User {
   signatures        Signature[]
   templates         Template[]
   pgpKeys           PgpKey[]
-  blockedSenders    BlockedSender[]
-  allowedSenders    AllowedSender[]
-  vacationRules     VacationRule[]
+  blockedSenders       BlockedSender[]
+  allowedSenders       AllowedSender[]
+  imageTrustedSenders  ImageTrustedSender[]
+  vacationRules        VacationRule[]
   filters           FilterRule[]
   contacts          Contact[]
   drafts            Draft[]
@@ -253,6 +254,17 @@ model BlockedSender {
 }
 
 model AllowedSender {
+  id     String @id @default(cuid())
+  userId String
+  value  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, value])
+}
+
+/// Addresses whose remote images load without prompting (per user).
+model ImageTrustedSender {
   id     String @id @default(cuid())
   userId String
   value  String

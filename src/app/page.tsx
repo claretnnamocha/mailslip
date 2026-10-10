@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { allowsPublicSignup } from "@/lib/hosting";
+import { absoluteBrandTitle } from "@/lib/page-meta";
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+
+export const metadata = absoluteBrandTitle("Beautiful email, without switching providers");
 
 export default async function LandingPage() {
   const session = await auth();

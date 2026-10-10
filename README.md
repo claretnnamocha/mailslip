@@ -48,7 +48,17 @@ Set `MAILSLIP_MODE` in `.env`:
 - `cloud` — public landing page and account signup at `/register`
 - `self-hosted` — sign-in only. `/` goes to `/login`, and account creation is hidden and rejected
 
-In cloud mode, create an account at http://localhost:3000/register, then connect a real mailbox in onboarding. In self-hosted mode, sign in with an account that already exists (an admin can still add team members).
+Browser tab titles use `Mailslip: {page}` (e.g. `Mailslip: Sign in`). On self-hosted, set `MAILSLIP_VENDOR_NAME` to replace the product name (`Acme: Inbox`).
+
+In cloud mode, create an account at http://localhost:3000/register, then connect a real mailbox in onboarding.
+
+In self-hosted mode, seed the first owner, then sign in and add teammates from Settings → Team:
+
+```bash
+npm run seed:owner -- --email admin@example.com --password '••••••••' --name 'Admin'
+```
+
+Details: [`docs/self-hosted-seed.md`](docs/self-hosted-seed.md).
 
 ### Local Next.js (host) + Docker infra only
 
@@ -122,6 +132,7 @@ In onboarding, enter real IMAP/POP3/JMAP and SMTP hosts (or use Gmail/Outlook pr
 | `npm run docker:up` | Start Postgres + Zitadel |
 | `npm run db:push` | Sync Prisma schema |
 | `npm run db:studio` | Prisma Studio |
+| `npm run seed:owner` | Create the first self-hosted owner |
 
 ## Security notes
 

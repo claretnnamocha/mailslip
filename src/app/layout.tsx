@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
-import { hostingMode } from "@/lib/hosting";
+import { brandName, hostingMode, rootTitleMetadata } from "@/lib/hosting";
 import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
@@ -15,13 +15,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const brand = brandName();
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
-  title: "Mailslip — Beautiful email, without switching providers",
+  title: rootTitleMetadata(),
   description:
     "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",
   openGraph: {
-    title: "Mailslip",
+    title: brand,
     description: "A calm, modern client for the email you already own.",
     images: ["/og.png"],
   },

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 export type DialogTone = "default" | "danger";
 
@@ -86,22 +86,14 @@ export function Dialog({
           <p className="mt-2 text-[14px] leading-relaxed text-text-2">{description}</p>
         )}
         {input && (
-          <label className="mt-4 block">
-            {input.label && (
-              <span className="mb-2 block text-[13px] font-medium text-text-2">
-                {input.label}
-              </span>
-            )}
-            <input
+          <div className="mt-4">
+            <Input
               ref={inputRef}
+              label={input.label}
               type={input.type || "text"}
               value={inputValue}
               onChange={(e) => onInputChange?.(e.target.value)}
               placeholder={input.placeholder}
-              className={cn(
-                "h-[46px] w-full rounded-[11px] border border-border-strong bg-surface px-3.5 text-[14px] text-text",
-                "focus:border-accent focus:outline-none focus:shadow-[0_0_0_3px_var(--accent-tint)]",
-              )}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -109,7 +101,7 @@ export function Dialog({
                 }
               }}
             />
-          </label>
+          </div>
         )}
         <div className="mt-6 flex justify-end gap-2">
           {showCancel && (
