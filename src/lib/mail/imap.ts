@@ -138,6 +138,7 @@ const LIST_HEADER_FIELDS = [
   "message-id",
   "in-reply-to",
   "references",
+  "list-unsubscribe",
 ];
 
 function threadFields(
@@ -436,6 +437,56 @@ export async function moveMessage(
     const lock = await client.getMailboxLock(source);
     try {
       await client.messageMove({ uid }, target, { uid: true });
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+export async function createMailbox(
+  config: ConnectionConfig,
+  name: string,
+  parentPath?: string,
+) {
+  return withImap(config, async (client) => {
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    const delim =
+      folders.find((folder) => folder.path === parentPath)?.delimiter ||
+      folders[0]?.delimiter ||
+      "/";
+    const path = parentPath ? `${parentPath}${delim}${name}` : name;
+    await client.mailboxCreate(path);
+    return path;
+  });
+}
+
+export async function markAllSeen(config: ConnectionConfig, folder: string) {
+  return withImap(config, async (client) => {
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    const path = resolveFolderPath(folder, folders);
+    const lock = await client.getMailboxLock(path);
+    try {
+      const uids = await client.search({ seen: false }, { uid: true });
+      if (!uids || uids.length === 0) return 0;
+      await client.messageFlagsAdd(uids, ["\\Seen"], { uid: true });
+      return uids.length;
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+/** Delete all messages in a mailbox (Trash/Junk erase). */
+export async function emptyMailbox(config: ConnectionConfig, folder: string) {
+  return withImap(config, async (client) => {
+    const folders = (await client.list()).map((box) => boxToFolder(box));
+    const path = resolveFolderPath(folder, folders);
+    const lock = await client.getMailboxLock(path);
+    try {
+      const uids = await client.search({ all: true }, { uid: true });
+      if (!uids || uids.length === 0) return 0;
+      await client.messageDelete(uids, { uid: true });
+      return uids.length;
     } finally {
       lock.release();
     }

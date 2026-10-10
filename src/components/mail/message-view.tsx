@@ -1,15 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import { useMailStore } from "@/stores/mail-store";
 import { formatMessageDate, initials } from "@/lib/utils";
 import { displaySubject, threadContaining } from "@/lib/mail/thread";
 import type { MailMessage } from "@/lib/mail/types";
 import { Button } from "@/components/ui/button";
+import { Menu, useMenu, type MenuItem } from "@/components/ui/menu";
 import { useDialog } from "@/components/dialog-provider";
 import {
+  FLAG_COLORS,
+  moveTargets,
+  setFlagColor,
+  setFlagged,
+  setSeen,
+  snoozeTarget,
+  unsubscribeUrlFromHeaders,
+} from "@/lib/mail/client-actions";
+import { folderRole } from "@/lib/mail/folder-map";
+import {
   ArchiveIcon,
+  BanIcon,
+  EyeIcon,
+  EyeOffIcon,
+  FlagIcon,
+  FolderIcon,
   ForwardIcon,
   ReplyAllIcon,
   ReplyIcon,
@@ -46,8 +62,10 @@ export function MessageView() {
     messages,
     setMessages,
     openCompose,
+    folders,
   } = useMailStore();
-  const { prompt, alert } = useDialog();
+  const { prompt, alert, confirm } = useDialog();
+  const menu = useMenu();
   const [showRemoteOnce, setShowRemoteOnce] = useState(false);
   const [trustedSenders, setTrustedSenders] = useState<string[]>([]);
   const [headersOpen, setHeadersOpen] = useState(false);
@@ -254,45 +272,155 @@ export function MessageView() {
     }
   }
 
-  async function act(action: "archive" | "trash" | "flag") {
-    const thread = threadContaining(messages, selectedId);
-    const targets = thread?.messages || messages.filter((message) => message.id === selectedId);
+  function threadTargets() {
+    const thread = threadContaining(messages, selectedId!);
+    return thread?.messages || messages.filter((message) => message.id === selectedId);
+  }
+
+  function roleDestination(role: "junk" | "trash" | "archive", fallback: string) {
+    return (
+      folders.find((item) => folderRole(item) === role && item.selectable !== false)?.path ||
+      fallback
+    );
+  }
+
+  async function moveSelected(destination: string, label: string) {
+    const targets = threadTargets();
+    if (targets.length === 0) return;
+    try {
+      await moveTargets(targets, destination);
+      const removed = new Set(targets.map((message) => message.id));
+      setMessages(messages.filter((message) => !removed.has(message.id)));
+      closeMessage();
+      toast.success(label);
+    } catch {
+      toast.error("Could not move message");
+    }
+  }
+
+  function act(action: "archive" | "trash" | "junk") {
+    if (action === "archive") return moveSelected(roleDestination("archive", "Archive"), "Archived");
+    if (action === "junk") return moveSelected(roleDestination("junk", "Junk"), "Moved to Junk");
+    return moveSelected(roleDestination("trash", "Trash"), "Moved to trash");
+  }
+
+  async function applyFlag(flagged: boolean) {
+    const targets = threadTargets();
+    if (targets.length === 0) return;
+    try {
+      await setFlagged(targets, flagged);
+      const ids = new Set(targets.map((message) => message.id));
+      setMessages(messages.map((message) => (ids.has(message.id) ? { ...message, flagged } : message)));
+      setSelectedMessage({ ...current, flagged });
+    } catch {
+      toast.error("Could not update flag");
+    }
+  }
+
+  async function toggleFlag() {
+    const next = !current.flagged;
+    if (!next) setFlagColor(current.id, "none");
+    await applyFlag(next);
+    toast.success(next ? "Flagged" : "Flag cleared");
+  }
+
+  async function markUnread() {
+    const targets = threadTargets();
+    if (targets.length === 0) return;
+    try {
+      await setSeen(targets, false);
+      const ids = new Set(targets.map((message) => message.id));
+      setMessages(messages.map((message) => (ids.has(message.id) ? { ...message, seen: false } : message)));
+      closeMessage();
+      toast.success("Marked as unread");
+    } catch {
+      toast.error("Could not update message");
+    }
+  }
+
+  async function remind(hours: number, label: string) {
+    const targets = threadTargets();
     const summary = targets[targets.length - 1];
     if (!summary) return;
-    if (action === "flag") {
-      await fetch(`/api/mail/messages/${summary.uid}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identityId: summary.identityId,
-          folder: summary.folder,
-          remoteId: summary.remoteId || String(summary.uid),
-          flagged: !selectedMessage?.flagged,
-        }),
-      });
-      toast.success(selectedMessage?.flagged ? "Unstarred" : "Starred");
-      return;
+    try {
+      await snoozeTarget(summary, new Date(Date.now() + hours * 60 * 60 * 1000));
+      const removed = new Set(targets.map((message) => message.id));
+      setMessages(messages.filter((message) => !removed.has(message.id)));
+      closeMessage();
+      toast.success(`Reminding you ${label}`);
+    } catch {
+      toast.error("Could not set reminder");
     }
-    const destination = action === "archive" ? "Archive" : "Trash";
-    await Promise.all(
-      targets.map((message) =>
-        fetch(`/api/mail/messages/${message.uid}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            identityId: message.identityId,
-            folder: message.folder,
-            remoteId: message.remoteId || String(message.uid),
-            action: "move",
-            destination,
-          }),
-        }),
-      ),
+  }
+
+  function openToolbarMenu(e: ReactMouseEvent<HTMLElement>, items: MenuItem[]) {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    menu.openAt(rect.left, rect.bottom + 6, items);
+  }
+
+  function openMoveMenu(e: ReactMouseEvent<HTMLElement>) {
+    const folderPath = threadTargets()[0]?.folder;
+    const items: MenuItem[] = folders
+      .filter((item) => item.selectable !== false && item.path !== folderPath)
+      .map((item) => ({
+        id: `move-${item.path}`,
+        label: item.name,
+        icon: <FolderIcon size={14} />,
+        onSelect: () => void moveSelected(item.path, `Moved to ${item.name}`),
+      }));
+    openToolbarMenu(
+      e,
+      items.length > 0 ? items : [{ id: "none", label: "No other folders", disabled: true }],
     );
-    const removed = new Set(targets.map((message) => message.id));
-    setMessages(messages.filter((message) => !removed.has(message.id)));
-    closeMessage();
-    toast.success(action === "archive" ? "Archived" : "Moved to trash");
+  }
+
+  function openRemindMenu(e: ReactMouseEvent<HTMLElement>) {
+    openToolbarMenu(e, [
+      { id: "r1", label: "In 1 hour", onSelect: () => void remind(1, "in 1 hour") },
+      { id: "r3", label: "In 3 hours", onSelect: () => void remind(3, "in 3 hours") },
+      { id: "r24", label: "Tomorrow", onSelect: () => void remind(24, "tomorrow") },
+      { id: "r168", label: "Next week", onSelect: () => void remind(168, "next week") },
+    ]);
+  }
+
+  function openFlagMenu(e: ReactMouseEvent<HTMLElement>) {
+    openToolbarMenu(
+      e,
+      FLAG_COLORS.map((color) => ({
+        id: `flag-${color.id}`,
+        label: color.id === "none" ? "Clear flag" : color.label,
+        icon: (
+          <span
+            className="inline-block h-3 w-3 rounded-full border border-border"
+            style={{ background: color.id === "none" ? "transparent" : color.swatch }}
+          />
+        ),
+        separatorBefore: color.id === "none" ? false : undefined,
+        onSelect: () => {
+          setFlagColor(current.id, color.id);
+          void applyFlag(color.id !== "none").then(() =>
+            toast.success(color.id === "none" ? "Flag cleared" : `Flagged ${color.label.toLowerCase()}`),
+          );
+        },
+      })),
+    );
+  }
+
+  const unsubscribeUrl = unsubscribeUrlFromHeaders(current.headers);
+
+  async function unsubscribe() {
+    if (!unsubscribeUrl) return;
+    const ok = await confirm({
+      title: "Unsubscribe from this sender?",
+      description: unsubscribeUrl.startsWith("mailto:")
+        ? "This opens a pre-filled email in your mail app to request removal."
+        : "This opens the sender’s unsubscribe page in a new tab.",
+      confirmLabel: "Unsubscribe",
+    });
+    if (!ok) return;
+    if (unsubscribeUrl.startsWith("mailto:")) window.location.href = unsubscribeUrl;
+    else window.open(unsubscribeUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -308,36 +436,37 @@ export function MessageView() {
           <ForwardIcon size={16} /> Forward
         </Button>
         <div className="mx-1 h-4 w-px bg-border" />
-        <Button size="sm" variant="ghost" onClick={() => act("archive")}>
+        <Button size="sm" variant="ghost" title="Archive" aria-label="Archive" onClick={() => void act("archive")}>
           <ArchiveIcon size={16} />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => act("trash")}>
+        <Button size="sm" variant="ghost" title="Move to Trash" aria-label="Trash" onClick={() => void act("trash")}>
           <TrashIcon size={16} />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => act("flag")}>
-          <StarIcon size={16} />
+        <Button size="sm" variant="ghost" title="Move to Junk" aria-label="Junk" onClick={() => void act("junk")}>
+          <BanIcon size={16} />
+        </Button>
+        <Button size="sm" variant="ghost" title="Move to…" aria-label="Move to" onClick={openMoveMenu}>
+          <FolderIcon size={16} />
+        </Button>
+        <div className="mx-1 h-4 w-px bg-border" />
+        <Button size="sm" variant="ghost" title="Mark as unread" aria-label="Mark as unread" onClick={() => void markUnread()}>
+          {current.seen ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
         </Button>
         <Button
           size="sm"
           variant="ghost"
-          onClick={async () => {
-            const summary = messages.find((m) => m.id === selectedId);
-            if (!summary) return;
-            const wakeAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
-            await fetch(`/api/mail/messages/${summary.uid}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                identityId: summary.identityId,
-                folder: summary.folder,
-                remoteId: summary.remoteId,
-                action: "snooze",
-                wakeAt,
-              }),
-            });
-            toast.success("Snoozed for 3 hours");
-          }}
+          title="Star"
+          aria-label="Star"
+          aria-pressed={current.flagged}
+          className={current.flagged ? "text-accent" : undefined}
+          onClick={() => void toggleFlag()}
         >
+          <StarIcon size={16} />
+        </Button>
+        <Button size="sm" variant="ghost" title="Flag color" aria-label="Flag" onClick={openFlagMenu}>
+          <FlagIcon size={16} />
+        </Button>
+        <Button size="sm" variant="ghost" title="Remind me" aria-label="Remind me" onClick={openRemindMenu}>
           <ClockIcon size={16} />
         </Button>
         <Button
@@ -357,6 +486,24 @@ export function MessageView() {
         </h1>
         {opened.length > 1 && (
           <p className="mt-1 text-[13px] text-text-3">{opened.length} messages in this thread</p>
+        )}
+
+        {unsubscribeUrl && (
+          <div className="mt-4 flex flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5 text-[12px] text-text-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              This message is from a mailing list.
+              <span className="mono ml-2 rounded-[6px] border border-border bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-text-3">
+                List-Unsubscribe
+              </span>
+            </span>
+            <button
+              type="button"
+              className="self-start font-medium text-accent sm:self-auto"
+              onClick={() => void unsubscribe()}
+            >
+              Unsubscribe
+            </button>
+          </div>
         )}
 
         {blockedImageSenders.length > 0 && (
@@ -471,6 +618,7 @@ export function MessageView() {
           );
         })}
       </div>
+      <Menu open={menu.open} x={menu.x} y={menu.y} items={menu.items} onClose={menu.close} />
     </section>
   );
 }

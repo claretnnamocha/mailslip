@@ -1,7 +1,35 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useMailStore } from "@/stores/mail-store";
+import { useDialog } from "@/components/dialog-provider";
+import { Menu, useMenu } from "@/components/ui/menu";
+import {
+  blockSender,
+  createMailbox,
+  emptyMailbox,
+  getFavoritePaths,
+  getFlagColor,
+  getListPrefs,
+  getMutedThreadIds,
+  markFolderRead,
+  moveTargets,
+  setFlagged,
+  setListPrefs,
+  setSeen,
+  snoozeTarget,
+  toggleFavoritePath,
+  toggleMutedThread,
+  FLAG_COLORS,
+  type FlagColor,
+  type ListPrefs,
+} from "@/lib/mail/client-actions";
+import {
+  buildFolderMenuItems,
+  buildListMoreItems,
+  buildMessageMenuItems,
+} from "./mail-menus";
 import { cn, formatMessageDate, initials } from "@/lib/utils";
 import { buildFolderTree, folderRole, groupedScopedUnseen, type FolderNode } from "@/lib/mail/folder-map";
 import {
@@ -18,8 +46,11 @@ import {
   BanIcon,
   ChevronIcon,
   EditIcon,
+  FilterIcon,
+  FlagIcon,
   FolderIcon,
   InboxIcon,
+  MoreIcon,
   PaperclipIcon,
   SendIcon,
   StarIcon,
@@ -54,19 +85,44 @@ function folderIcon(folder: MailFolder) {
   }
 }
 
-function threadsForList(mail: MailMessageSummary[], unreadOnly: boolean) {
-  const threads = groupThreads(mail);
+function threadsForList(
+  mail: MailMessageSummary[],
+  unreadOnly: boolean,
+  mutedIds: string[] = [],
+) {
+  let threads = groupThreads(mail);
+  if (mutedIds.length > 0) {
+    const muted = new Set(mutedIds);
+    threads = threads.filter((thread) => !muted.has(thread.id));
+  }
   if (!unreadOnly) return threads;
   return threads.filter((thread) => thread.messages.some((message) => !message.seen));
+}
+
+type RowMenuHandler = (
+  e: ReactMouseEvent,
+  thread: MailThread<MailMessageSummary>,
+  message: MailMessageSummary,
+  subRow: boolean,
+) => void;
+
+type FolderMenuHandler = (e: ReactMouseEvent, folder: MailFolder) => void;
+
+function flagSwatch(color: FlagColor) {
+  return FLAG_COLORS.find((item) => item.id === color)?.swatch;
 }
 
 export function MessageList({
   query = "",
   unreadOnly = false,
+  onUnreadChange,
+  onSync,
   onSelect,
 }: {
   query?: string;
   unreadOnly?: boolean;
+  onUnreadChange?: (value: boolean) => void;
+  onSync?: () => void;
   onSelect?: () => void;
 }) {
   const {
@@ -82,9 +138,21 @@ export function MessageList({
     activeIdentityId,
     identities,
     setMessages,
+    openCompose,
   } = useMailStore();
   const { density } = useTheme();
+  const router = useRouter();
+  const { prompt, confirm } = useDialog();
+  const menu = useMenu();
   const compact = density === "compact";
+  const [listPrefs, setListPrefsState] = useState<ListPrefs>({
+    showContactPhoto: true,
+    showMailCategories: false,
+  });
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [mutedIds, setMutedIds] = useState<string[]>([]);
+  const [showMuted, setShowMuted] = useState(false);
+  const [, setFlagTick] = useState(0);
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [openThreadIds, setOpenThreadIds] = useState<string[]>([]);
   const [mailByFolder, setMailByFolder] = useState<Record<string, MailMessageSummary[]>>({});
@@ -92,7 +160,21 @@ export function MessageList({
   const seededFor = useRef<string | null>(null);
   const searching = query.trim().length > 0;
   const tree = buildFolderTree(folders);
-  const searchThreads = threadsForList(messages, unreadOnly);
+  const hiddenMuted = showMuted ? [] : mutedIds;
+  const searchThreads = threadsForList(messages, unreadOnly, hiddenMuted);
+  const activeIdentity = identities.find((identity) => identity.id === activeIdentityId);
+  const identityEmail = activeIdentity?.email || identities[0]?.email || "";
+  const mailIdentityId = activeIdentityId !== "all" ? activeIdentityId : identities[0]?.id || "";
+  const currentFolder = folders.find((item) => item.path === folder);
+  const folderTitle = currentFolder?.name || (folder === "INBOX" ? "Inbox" : folder);
+  const unreadCount = messages.filter((message) => !message.seen).length;
+  const mutedInFolder = groupThreads(messages).filter((thread) => mutedIds.includes(thread.id)).length;
+
+  useEffect(() => {
+    setListPrefsState(getListPrefs());
+    setFavorites(getFavoritePaths());
+    setMutedIds(getMutedThreadIds());
+  }, []);
 
   useEffect(() => {
     setOpenPaths([]);
@@ -232,8 +314,372 @@ export function MessageList({
     };
   }
 
+  function syncNow() {
+    setMailByFolder((prev) => (prev[folder] ? { [folder]: prev[folder] } : {}));
+    onSync?.();
+  }
+
+  function removeMessages(ids: Set<string>) {
+    setMailByFolder((prev) => {
+      const next = { ...prev };
+      for (const path of Object.keys(next)) {
+        next[path] = next[path].filter((message) => !ids.has(message.id));
+      }
+      return next;
+    });
+    setMessages(messages.filter((message) => !ids.has(message.id)));
+    if (selectedId && ids.has(selectedId)) closeMessage();
+  }
+
+  function patchLocal(ids: Set<string>, patch: Partial<MailMessageSummary>) {
+    setMailByFolder((prev) => {
+      const next = { ...prev };
+      for (const path of Object.keys(next)) {
+        next[path] = next[path].map((message) =>
+          ids.has(message.id) ? { ...message, ...patch } : message,
+        );
+      }
+      return next;
+    });
+    setMessages(
+      messages.map((message) => (ids.has(message.id) ? { ...message, ...patch } : message)),
+    );
+  }
+
+  function roleDestination(role: "junk" | "trash" | "archive", fallback: string) {
+    return folders.find((item) => folderRole(item) === role && item.selectable !== false)?.path || fallback;
+  }
+
+  async function moveWithToast(
+    targets: MailMessageSummary[],
+    destination: string,
+    label: string,
+  ) {
+    try {
+      await moveTargets(targets, destination);
+      removeMessages(new Set(targets.map((message) => message.id)));
+      toast.success(label);
+    } catch {
+      toast.error("Could not move message");
+    }
+  }
+
+  async function composeFor(
+    message: MailMessageSummary,
+    thread: MailThread<MailMessageSummary>,
+    mode: "reply" | "replyAll" | "forward",
+  ) {
+    const store = useMailStore.getState();
+    const ready = () => {
+      const state = useMailStore.getState();
+      return (
+        !state.loadingMessage &&
+        state.selectedMessage &&
+        thread.messages.some((item) => item.id === state.selectedMessage?.id)
+      );
+    };
+    if (store.selectedId !== message.id && !ready()) setSelectedId(message.id);
+    onSelect?.();
+    const started = Date.now();
+    while (!ready()) {
+      if (Date.now() - started > 8000) {
+        toast.error("Open the message first, then try again");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    openCompose(mode);
+  }
+
+  function openMessageMenu(
+    e: ReactMouseEvent,
+    thread: MailThread<MailMessageSummary>,
+    message: MailMessageSummary,
+    subRow: boolean,
+  ) {
+    const targets = subRow ? [message] : thread.messages;
+    const muted = mutedIds.includes(thread.id);
+    const items = buildMessageMenuItems({
+      thread,
+      message,
+      folders,
+      muted,
+      onOpen: () => openMessage(message, mailByFolder[message.folder]),
+      onReply: () => void composeFor(message, thread, "reply"),
+      onReplyAll: () => void composeFor(message, thread, "replyAll"),
+      onForward: () => void composeFor(message, thread, "forward"),
+      onForwardAsAttachment: () => {
+        toast.message("Forwarding as an attachment isn’t available yet", {
+          description: "Opening a regular forward instead.",
+        });
+        void composeFor(message, thread, "forward");
+      },
+      onSendAgain: () => toast.message("Send Again isn’t available yet"),
+      onRedirect: () => {
+        toast.message("Redirect isn’t available yet", {
+          description: "Opening a regular forward instead.",
+        });
+        void composeFor(message, thread, "forward");
+      },
+      onRemind: async (hours) => {
+        try {
+          await snoozeTarget(thread.latest, new Date(Date.now() + hours * 60 * 60 * 1000));
+          removeMessages(new Set(thread.messages.map((item) => item.id)));
+          toast.success(
+            hours < 24
+              ? `Reminding you in ${hours} hour${hours === 1 ? "" : "s"}`
+              : hours === 24
+                ? "Reminding you tomorrow"
+                : "Reminding you next week",
+          );
+        } catch {
+          toast.error("Could not set reminder");
+        }
+      },
+      onToggleSeen: async () => {
+        const nextSeen = !targets.every((item) => item.seen);
+        try {
+          await setSeen(targets, nextSeen);
+          patchLocal(new Set(targets.map((item) => item.id)), { seen: nextSeen });
+          toast.success(nextSeen ? "Marked as read" : "Marked as unread");
+        } catch {
+          toast.error("Could not update message");
+        }
+      },
+      onJunk: () => void moveWithToast(targets, roleDestination("junk", "Junk"), "Moved to Junk"),
+      onMute: () => {
+        setMutedIds(toggleMutedThread(thread.id));
+        toast.success(muted ? "Thread unmuted" : "Thread muted");
+      },
+      onDelete: () => {
+        if (folderRole({ path: message.folder, name: message.folder }) === "trash") {
+          toast.message("Already in Trash");
+          return;
+        }
+        void moveWithToast(targets, roleDestination("trash", "Trash"), "Moved to Trash");
+      },
+      onBlock: async () => {
+        const address = message.from.address;
+        const ok = await confirm({
+          title: "Block sender?",
+          description: `Mail from ${address} will be treated as blocked.`,
+          confirmLabel: "Block",
+          tone: "danger",
+        });
+        if (!ok) return;
+        try {
+          await blockSender(address);
+          toast.success(`Blocked ${address}`);
+        } catch {
+          toast.error("Could not block sender");
+        }
+      },
+      onFlag: async (color) => {
+        setFlagTick((tick) => tick + 1);
+        const flagged = color !== "none";
+        try {
+          await setFlagged(targets, flagged);
+          patchLocal(new Set(targets.map((item) => item.id)), { flagged });
+          toast.success(flagged ? `Flagged ${color}` : "Flag cleared");
+        } catch {
+          toast.error("Could not update flag");
+        }
+      },
+      onArchive: () =>
+        void moveWithToast(targets, roleDestination("archive", "Archive"), "Archived"),
+      onMove: (path) => {
+        const name = folders.find((item) => item.path === path)?.name || path;
+        void moveWithToast(targets, path, `Moved to ${name}`);
+      },
+      onCopyHint: () => toast.message("Copy to isn’t available yet", {
+        description: "Use Move to for now.",
+      }),
+      onApplyRules: () => {
+        toast.message("Rules run on incoming mail", {
+          description: "Opening your filter settings.",
+        });
+        router.push("/settings/filters");
+      },
+    });
+    menu.openFromEvent(e, items);
+  }
+
+  function openFolderMenu(e: ReactMouseEvent, target: MailFolder) {
+    const items = buildFolderMenuItems({
+      folder: target,
+      identityEmail,
+      identityId: mailIdentityId,
+      favorites,
+      onNewMailbox: async () => {
+        const name = await prompt({
+          title: "New mailbox",
+          description: `Create a mailbox in ${identityEmail}.`,
+          label: "Name",
+          placeholder: "Receipts",
+          confirmLabel: "Create",
+        });
+        if (!name?.trim() || !mailIdentityId) return;
+        try {
+          await createMailbox(mailIdentityId, name.trim());
+          toast.success(`Created “${name.trim()}”`);
+          syncNow();
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Could not create mailbox");
+        }
+      },
+      onToggleFavorite: () => {
+        const next = toggleFavoritePath(target.path);
+        setFavorites(next);
+        toast.success(
+          next.includes(target.path) ? "Added to Favorites" : "Removed from Favorites",
+        );
+      },
+      onExport: () => {
+        const cached = mailByFolder[target.path] || (target.path === folder ? messages : []);
+        if (cached.length === 0) {
+          toast.message("Nothing to export yet", {
+            description: "Open the mailbox to load its messages first.",
+          });
+          return;
+        }
+        const blob = new Blob([JSON.stringify(cached, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${target.name.replace(/[^\w.-]+/g, "_") || "mailbox"}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${cached.length} cached message${cached.length === 1 ? "" : "s"}`);
+      },
+      onEraseDeleted: () => void eraseFolder(target, "Erase deleted items?"),
+      onEraseJunk: () => void eraseFolder(target, "Erase junk mail?"),
+      onMarkAllRead: async () => {
+        if (!mailIdentityId) return;
+        try {
+          await markFolderRead(mailIdentityId, target.path);
+          setMailByFolder((prev) =>
+            prev[target.path]
+              ? {
+                  ...prev,
+                  [target.path]: prev[target.path].map((message) => ({ ...message, seen: true })),
+                }
+              : prev,
+          );
+          if (target.path === folder) {
+            setMessages(messages.map((message) => ({ ...message, seen: true })));
+          }
+          toast.success(`Marked all in ${target.name} as read`);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Could not mark as read");
+        }
+      },
+      onSync: () => {
+        syncNow();
+        toast.success(`Synchronizing ${identityEmail}…`);
+      },
+      onEditAccount: () => router.push("/settings/identities"),
+      onAccountInfo: () =>
+        toast.message(identityEmail || "Account", {
+          description: activeIdentity
+            ? `${activeIdentity.type} · ${activeIdentity.connected ? "Connected" : "Not connected"}`
+            : undefined,
+        }),
+    });
+    menu.openFromEvent(e, items);
+  }
+
+  async function eraseFolder(target: MailFolder, title: string) {
+    if (!mailIdentityId) return;
+    const ok = await confirm({
+      title,
+      description: `Messages in “${target.name}” will be permanently removed. This can’t be undone.`,
+      confirmLabel: "Erase",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await emptyMailbox(mailIdentityId, target.path);
+      setMailByFolder((prev) => ({ ...prev, [target.path]: [] }));
+      if (target.path === folder) {
+        setMessages([]);
+        closeMessage();
+      }
+      toast.success(`Erased ${target.name}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not erase mailbox");
+    }
+  }
+
+  function openMoreMenu(e: ReactMouseEvent<HTMLButtonElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const items = buildListMoreItems({
+      prefs: listPrefs,
+      onToggleCategories: () => setListPrefsState(setListPrefs({ showMailCategories: !listPrefs.showMailCategories })),
+      onTogglePhotos: () =>
+        setListPrefsState(setListPrefs({ showContactPhoto: !listPrefs.showContactPhoto })),
+      onAboutCategories: () =>
+        toast.message("About Categories", {
+          description: "Mail categories sort Primary, Promotions and Updates. Coming soon to Mailslip.",
+        }),
+    });
+    e.stopPropagation();
+    menu.openAt(rect.right - 220, rect.bottom + 6, items);
+  }
+
   return (
     <section className="flex h-full w-full shrink-0 flex-col border-r border-border bg-surface md:w-[380px]">
+      {!searching && (
+        <div className="flex items-start gap-2 border-b border-border px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{folderTitle}</h2>
+            {identityEmail && (
+              <p className="mono truncate text-[11px] text-text-3">{identityEmail}</p>
+            )}
+            <p className="mt-0.5 text-[12px] text-text-2">
+              {messages.length} {messages.length === 1 ? "message" : "messages"}, {unreadCount} unread
+            </p>
+            {mutedInFolder > 0 && (
+              <button
+                type="button"
+                aria-pressed={showMuted}
+                onClick={() => setShowMuted((value) => !value)}
+                className={cn(
+                  "mono mt-1 rounded-[7px] border px-2 py-0.5 text-[10.5px] font-medium",
+                  showMuted
+                    ? "border-accent/30 bg-accent-tint text-accent"
+                    : "border-border bg-surface-2 text-text-2 hover:bg-hover",
+                )}
+              >
+                {showMuted ? "Hide" : "Show"} {mutedInFolder} muted
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="Filter unread"
+            aria-pressed={unreadOnly}
+            title="Show unread only"
+            onClick={() => onUnreadChange?.(!unreadOnly)}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border",
+              unreadOnly
+                ? "border-accent/30 bg-accent-tint text-accent"
+                : "border-border bg-surface-2 text-text-2 hover:bg-hover",
+            )}
+          >
+            <FilterIcon size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="More list options"
+            title="More"
+            onClick={openMoreMenu}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-text-2 hover:bg-hover"
+          >
+            <MoreIcon size={15} />
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         {!foldersReady && !searching && (
           <div className="space-y-2 p-3">
@@ -276,6 +722,8 @@ export function MessageList({
               onToggleExpand={() => toggleThreadExpanded(thread.id)}
               onOpenMessage={openMessage}
               dragPayload={dragPayloadForThread(thread, folder)}
+              showPhoto={listPrefs.showContactPhoto}
+              onContextMenu={openMessageMenu}
             />
           ))}
 
@@ -295,6 +743,11 @@ export function MessageList({
               openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
               unreadOnly={unreadOnly}
+              mutedIds={hiddenMuted}
+              favorites={favorites}
+              showPhoto={listPrefs.showContactPhoto}
+              onRowContextMenu={openMessageMenu}
+              onFolderContextMenu={openFolderMenu}
               loadingPath={loadingList ? folder : null}
               selectedId={selectedId}
               compact={compact}
@@ -308,6 +761,13 @@ export function MessageList({
             />
           ))}
       </div>
+      <Menu
+        open={menu.open}
+        x={menu.x}
+        y={menu.y}
+        items={menu.items}
+        onClose={menu.close}
+      />
     </section>
   );
 
@@ -331,6 +791,11 @@ function FolderBranch({
   openThreadIds,
   mailByFolder,
   unreadOnly,
+  mutedIds,
+  favorites,
+  showPhoto,
+  onRowContextMenu,
+  onFolderContextMenu,
   loadingPath,
   selectedId,
   compact,
@@ -348,6 +813,11 @@ function FolderBranch({
   openThreadIds: string[];
   mailByFolder: Record<string, MailMessageSummary[]>;
   unreadOnly: boolean;
+  mutedIds: string[];
+  favorites: string[];
+  showPhoto: boolean;
+  onRowContextMenu: RowMenuHandler;
+  onFolderContextMenu: FolderMenuHandler;
   loadingPath: string | null;
   selectedId: string | null;
   compact: boolean;
@@ -366,7 +836,8 @@ function FolderBranch({
   const Icon = folderIcon(node.folder);
   const count = groupedScopedUnseen(node, mailByFolder);
   const mail = mailByFolder[node.folder.path];
-  const threads = mail ? threadsForList(mail, unreadOnly) : [];
+  const threads = mail ? threadsForList(mail, unreadOnly, mutedIds) : [];
+  const isFavorite = favorites.includes(node.folder.path);
   const loading = open && loadingPath === node.folder.path && !mail;
   const selectable = node.folder.selectable !== false;
   const isDropTarget = dropTarget === node.folder.path && selectable;
@@ -384,6 +855,7 @@ function FolderBranch({
         type="button"
         aria-expanded={open}
         onClick={() => onToggle(node.folder)}
+        onContextMenu={(e) => onFolderContextMenu(e, node.folder)}
         onDragOver={onFolderDragOver}
         onDragLeave={() => onDropTarget(null)}
         onDrop={(e) => {
@@ -412,6 +884,7 @@ function FolderBranch({
         />
         <Icon size={16} className="shrink-0 text-text-2" />
         <span className="truncate">{node.folder.name}</span>
+        {isFavorite && <StarIcon size={11} className="shrink-0 text-accent" />}
         {count > 0 && (
           <span className="ml-auto min-w-5 shrink-0 rounded-full bg-accent-tint px-1.5 text-center text-[11px] font-semibold tabular-nums text-text">
             {count}
@@ -430,6 +903,11 @@ function FolderBranch({
               openThreadIds={openThreadIds}
               mailByFolder={mailByFolder}
               unreadOnly={unreadOnly}
+              mutedIds={mutedIds}
+              favorites={favorites}
+              showPhoto={showPhoto}
+              onRowContextMenu={onRowContextMenu}
+              onFolderContextMenu={onFolderContextMenu}
               loadingPath={loadingPath}
               selectedId={selectedId}
               compact={compact}
@@ -455,6 +933,8 @@ function FolderBranch({
                 onToggleExpand={() => onToggleThread(thread.id)}
                 onOpenMessage={(message) => onOpenMessage(message, mail)}
                 dragPayload={dragPayloadForThread(thread, node.folder.path)}
+                showPhoto={showPhoto}
+                onContextMenu={onRowContextMenu}
               />
             ))}
           {selectable && mail && threads.length === 0 && !loading && (
@@ -480,6 +960,8 @@ function ThreadBlock({
   onToggleExpand,
   onOpenMessage,
   dragPayload,
+  showPhoto,
+  onContextMenu,
 }: {
   thread: MailThread<MailMessageSummary>;
   selectedId: string | null;
@@ -489,6 +971,8 @@ function ThreadBlock({
   onToggleExpand: () => void;
   onOpenMessage: (message: MailMessageSummary) => void;
   dragPayload: MailDragPayload;
+  showPhoto: boolean;
+  onContextMenu: RowMenuHandler;
 }) {
   const count = thread.messages.length;
   const older = [...thread.messages]
@@ -507,6 +991,8 @@ function ThreadBlock({
         onToggleExpand={onToggleExpand}
         onClick={() => onOpenMessage(thread.latest)}
         dragPayload={dragPayload}
+        showPhoto={showPhoto}
+        onContextMenu={onContextMenu}
       />
       {expanded &&
         older.map((message) => (
@@ -520,6 +1006,8 @@ function ThreadBlock({
             subRow
             onClick={() => onOpenMessage(message)}
             dragPayload={dragPayload}
+            showPhoto={showPhoto}
+            onContextMenu={onContextMenu}
           />
         ))}
     </div>
@@ -538,6 +1026,8 @@ function MessageRow({
   onToggleExpand,
   onClick,
   dragPayload,
+  showPhoto,
+  onContextMenu,
 }: {
   thread: MailThread<MailMessageSummary>;
   message?: MailMessageSummary;
@@ -550,8 +1040,12 @@ function MessageRow({
   onToggleExpand?: () => void;
   onClick: () => void;
   dragPayload?: MailDragPayload;
+  showPhoto: boolean;
+  onContextMenu: RowMenuHandler;
 }) {
   const message = messageOverride || thread.latest;
+  const flagColor = getFlagColor(message.id);
+  const flagTint = flagSwatch(flagColor);
   const seen = messageOverride ? message.seen : thread.messages.every((item) => item.seen);
   const count = thread.messages.length;
   const people = subRow
@@ -561,6 +1055,7 @@ function MessageRow({
   return (
     <div
       draggable={Boolean(dragPayload) && !subRow}
+      onContextMenu={(e) => onContextMenu(e, thread, message, subRow)}
       onDragStart={(e) => {
         if (!dragPayload) return;
         e.dataTransfer.setData(DRAG_MIME, JSON.stringify(dragPayload));
@@ -595,14 +1090,16 @@ function MessageRow({
           expandable && "pl-1",
         )}
       >
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-full bg-border-strong font-semibold text-text-2",
-            subRow ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-[11px]",
-          )}
-        >
-          {initials(message.from.name, message.from.address)}
-        </div>
+        {showPhoto && (
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-center rounded-full bg-border-strong font-semibold text-text-2",
+              subRow ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-[11px]",
+            )}
+          >
+            {initials(message.from.name, message.from.address)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span
@@ -639,8 +1136,17 @@ function MessageRow({
           </div>
           <div className="mt-0.5 flex items-center gap-2">
             <span className="truncate text-[12px] text-text-3">{message.snippet}</span>
-            {!subRow && thread.messages.some((item) => item.flagged) && (
-              <StarIcon size={12} className="shrink-0 text-accent" />
+            {flagColor !== "none" ? (
+              <FlagIcon
+                size={12}
+                className="shrink-0"
+                style={{ color: flagTint, fill: flagTint }}
+              />
+            ) : (
+              !subRow &&
+              thread.messages.some((item) => item.flagged) && (
+                <StarIcon size={12} className="shrink-0 text-accent" />
+              )
             )}
           </div>
         </div>

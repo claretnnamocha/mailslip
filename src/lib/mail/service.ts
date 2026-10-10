@@ -10,6 +10,9 @@ import {
   getQuota,
   listFolders,
   listMessages,
+  createMailbox,
+  emptyMailbox,
+  markAllSeen,
   moveMessage,
   searchMessages,
   setFlags,
@@ -246,6 +249,50 @@ export async function updateMessageFlags(
     await setFlags(config, folder, Number(key), flags);
   }
   return { ok: true };
+}
+
+export async function createIdentityMailbox(
+  identity: MailIdentity,
+  name: string,
+  parentPath?: string,
+) {
+  const backing = await resolveBackingIdentity(identity);
+  const config = identityToConfig(backing);
+  if (!config) throw new Error("Identity credentials missing");
+  if (backing.incomingProtocol !== "IMAP") {
+    throw new Error("Creating mailboxes requires IMAP");
+  }
+  return createMailbox(config, name, parentPath);
+}
+
+export async function markIdentityFolderRead(identity: MailIdentity, folder: string) {
+  const backing = await resolveBackingIdentity(identity);
+  const config = identityToConfig(backing);
+  if (!config) throw new Error("Identity credentials missing");
+  if (backing.incomingProtocol === "IMAP") {
+    return markAllSeen(config, folder);
+  }
+  if (backing.incomingProtocol === "JMAP") {
+    const messages = await listJmapMessages(config, folder, meta(identity));
+    const unseen = messages.filter((message) => !message.seen);
+    await Promise.all(
+      unseen.map((message) =>
+        setJmapKeywords(config, message.remoteId || String(message.uid), { seen: true }),
+      ),
+    );
+    return unseen.length;
+  }
+  throw new Error("Mark all read is not supported for this protocol");
+}
+
+export async function emptyIdentityMailbox(identity: MailIdentity, folder: string) {
+  const backing = await resolveBackingIdentity(identity);
+  const config = identityToConfig(backing);
+  if (!config) throw new Error("Identity credentials missing");
+  if (backing.incomingProtocol !== "IMAP") {
+    throw new Error("Emptying a mailbox requires IMAP");
+  }
+  return emptyMailbox(config, folder);
 }
 
 export async function moveMail(

@@ -22,6 +22,7 @@ export function MailShell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [syncTick, setSyncTick] = useState(0);
   const {
     identities,
     setIdentities,
@@ -96,7 +97,7 @@ export function MailShell() {
     return () => {
       cancelled = true;
     };
-  }, [identities, activeIdentityId, setFolder, setFolders]);
+  }, [identities, activeIdentityId, syncTick, setFolder, setFolders]);
 
   useEffect(() => {
     if (identities.length === 0) return;
@@ -126,7 +127,7 @@ export function MailShell() {
     return () => {
       cancelled = true;
     };
-  }, [identities, activeIdentityId, folder, query, setLoadingList, setMessages]);
+  }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
 
   useEffect(() => {
     setMobileView(selectedId ? "message" : "list");
@@ -306,6 +307,8 @@ export function MailShell() {
             <MessageList
               query={query}
               unreadOnly={unreadOnly}
+              onUnreadChange={setUnreadOnly}
+              onSync={() => setSyncTick((tick) => tick + 1)}
               onSelect={() => setMobileView("message")}
             />
           </div>
