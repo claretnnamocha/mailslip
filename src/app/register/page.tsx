@@ -3,6 +3,7 @@ import { allowsPublicSignup } from "@/lib/hosting";
 import { pageTitle } from "@/lib/page-meta";
 import { RegisterForm } from "./register-form";
 
+export const dynamic = "force-dynamic";
 export const metadata = pageTitle("Create account");
 
 export default function RegisterPage() {

@@ -15,23 +15,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const brand = brandName();
+/** Hosting/vendor env must be read per request, not baked at build. */
+export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
-  title: rootTitleMetadata(),
-  description:
-    "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",
-  openGraph: {
-    title: brand,
-    description: "A calm, modern client for the email you already own.",
-    images: ["/og.png"],
-  },
-  icons: {
-    icon: "/logo-512.png",
-    apple: "/logo-512.png",
-  },
-};
+export function generateMetadata(): Metadata {
+  const brand = brandName();
+  return {
+    metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
+    title: rootTitleMetadata(),
+    description:
+      "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",
+    openGraph: {
+      title: brand,
+      description: "A calm, modern client for the email you already own.",
+      images: ["/og.png"],
+    },
+    icons: {
+      icon: "/logo-512.png",
+      apple: "/logo-512.png",
+    },
+  };
+}
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

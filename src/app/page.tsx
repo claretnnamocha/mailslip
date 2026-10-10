@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 
+export const dynamic = "force-dynamic";
 export const metadata = absoluteBrandTitle("Beautiful email, without switching providers");
 
 export default async function LandingPage() {
