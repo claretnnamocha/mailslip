@@ -57,13 +57,28 @@ Cloudflare only treats a leading `*.` as a wildcard. Mid-label names like `*-mai
 | --- | --- | --- | --- |
 | CNAME | `*` | `mailslip.uselinqr.io` | Proxied |
 
-That matches any **single** label under the zone, including `gbese-mail.uselinqr.io`. More specific records (`mail`, `staging`, `folio`, …) **win over** `*` and keep serving other products.
+That matches any **single** label under the zone, including `gbese-mail.uselinqr.io`. More specific records (`mail`, `staging`, `folio`, …) **win over** `*` — **required** for sibling apps.
 
 Delete the invalid `*-mail` record if you created it. Covered by free Universal SSL `*.uselinqr.io`.
 
+**If `folio.uselinqr.io` (or any other product) starts serving Mailslip:**
+
+1. DNS → ensure an **explicit** `folio` record to Folio’s origin (CNAME/A). Do not rely on `*`.
+2. Workers → Routes → add `folio.uselinqr.io/*` → **None** (same for every sibling app).
+3. Redeploy the SaaS Worker from `docs/cloudflare-saas-origin-worker.js` (it pass-throughs non-Mailslip zone hosts).
+
 ### Cloudflare for SaaS (BYOD)
 
-Originless fallback, Worker route `*/*`, `mailslip.uselinqr.io/*` → None, Fallback Origin Active, `cname.mailslip` → platform. Worker sets `X-Mailslip-Host` for custom hostnames.
+Originless fallback, Fallback Origin Active, `cname.mailslip` → platform. Worker sets `X-Mailslip-Host` for custom hostnames.
+
+Worker routes (more specific wins):
+
+| Route | Worker |
+| --- | --- |
+| `mailslip.uselinqr.io/*` | None |
+| `folio.uselinqr.io/*` (and other apps) | None |
+| `saas-origin.uselinqr.io/*` | Mailslip SaaS Worker |
+| `*/*` | Mailslip SaaS Worker (BYOD only after exclusions) |
 
 Slug hosts on your zone do **not** need Custom Hostnames — only external BYOD domains do.
 

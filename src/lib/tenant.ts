@@ -9,8 +9,12 @@ export type TenantWorkspace = Pick<
 >;
 
 export type HostContext = {
-  /** Platform entry (e.g. mailslip.uselinqr.io): signup + pick your workspace via account. */
-  kind: "platform" | "tenant";
+  /**
+   * platform — entry host (signup / landing)
+   * tenant — slug or BYOD host bound to a workspace (or unmapped BYOD → redirect)
+   * foreign — other product on the shared zone (e.g. folio.uselinqr.io); do not serve Mailslip
+   */
+  kind: "platform" | "tenant" | "foreign";
   host: string;
   tenant: TenantWorkspace | null;
 };
@@ -173,8 +177,18 @@ export async function resolveHostContext(
     where: { customDomain: host },
     select: tenantSelect,
   });
+  if (tenant) {
+    return { kind: "tenant", host, tenant };
+  }
 
-  return { kind: "tenant", host, tenant };
+  // Shared zone siblings (folio.uselinqr.io, …) — not Mailslip; never redirect to platform.
+  const base = tenantBaseDomain();
+  if (base && (host === base || host.endsWith(`.${base}`))) {
+    return { kind: "foreign", host, tenant: null };
+  }
+
+  // External hostname with no workspace mapping (misconfigured BYOD).
+  return { kind: "tenant", host, tenant: null };
 }
 
 export async function getRequestHost() {
@@ -198,7 +212,7 @@ export async function getRequestTenant(): Promise<TenantWorkspace | null> {
 export function tenantHostingMode(ctx: HostContext | TenantWorkspace | null): HostingMode {
   // Legacy: TenantWorkspace alone
   if (ctx && "kind" in ctx) {
-    return ctx.kind === "platform" ? "cloud" : "self-hosted";
+    return ctx.kind === "tenant" ? "self-hosted" : "cloud";
   }
   if (ctx && "customDomain" in ctx && (ctx.customDomain || ctx.slug)) return "self-hosted";
   // Env fallback for scripts / no request
@@ -213,7 +227,7 @@ export function tenantHostingMode(ctx: HostContext | TenantWorkspace | null): Ho
 
 export function tenantBrandName(ctx: HostContext | TenantWorkspace | null) {
   if (ctx && "kind" in ctx) {
-    if (ctx.kind === "platform") return "Mailslip";
+    if (ctx.kind === "platform" || ctx.kind === "foreign") return "Mailslip";
     const brand = ctx.tenant?.brandName?.trim();
     return brand || "Mailslip";
   }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Providers } from "@/components/providers";
 import { resolveHosting, rootTitleMetadata } from "@/lib/hosting";
 import { platformOrigin } from "@/lib/public-url";
@@ -41,7 +41,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { context, tenant, mode, brand } = await resolveHosting();
-  // Unmapped slug/custom hosts (e.g. justdeyplay-mail…) → platform entry.
+  // Other apps on the shared zone (folio.uselinqr.io, …) — do not serve Mailslip.
+  if (context.kind === "foreign") notFound();
+  // Unmapped slug / BYOD hosts (e.g. justdeyplay-mail…) → platform entry.
   if (context.kind === "tenant" && !tenant) {
     redirect(platformOrigin());
   }
