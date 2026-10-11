@@ -15,8 +15,8 @@
  *      saas-origin.uselinqr.io/*  → this Worker
  *      * / *                      → this Worker  (BYOD custom hostnames)
  *
- * Do NOT rely on */* alone without excluding other products on uselinqr.io —
- * that is what made folio.uselinqr.io serve Mailslip.
+ * Do NOT rely on a bare */* route alone without excluding other products on
+ * uselinqr.io — that is what made folio.uselinqr.io serve Mailslip.
  */
 
 const PLATFORM_ORIGIN = "https://mailslip.uselinqr.io";
