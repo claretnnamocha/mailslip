@@ -50,7 +50,7 @@ export default function IdentitiesSettingsPage() {
       const ok = await confirm({
         title: "Make this mailbox personal?",
         description:
-          "Only you will be able to use and manage it. Other admins and teammates lose access, and it can no longer be assigned.",
+          "Only you will be able to read it. An admin can detach it, but it can only be given back to you.",
         confirmLabel: "Make personal",
         tone: "danger",
       });
@@ -94,8 +94,8 @@ export default function IdentitiesSettingsPage() {
           <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Mail identities</h1>
           <p className="mt-2 text-[15px] text-text-2">
             {isAdmin
-              ? "Shared mailboxes can be assigned to teammates. Personal ones stay with one profile only."
-              : "Mailboxes an admin has connected for you, plus any personal mailbox you own."}
+              ? "Members cannot add a mail identity. Shared mailboxes can be assigned to teammates. A personal mailbox stays with the person it was created for — you can detach it, then give it back only to them."
+              : "Mailboxes an admin has connected for you. You cannot add a mail identity."}
           </p>
         </div>
         {isAdmin && (

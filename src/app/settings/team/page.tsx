@@ -15,7 +15,12 @@ type Member = {
   user: { id: string; name?: string | null; email: string };
 };
 
-type Identity = { id: string; email: string; access?: "SHARED" | "PERSONAL" };
+type Identity = {
+  id: string;
+  email: string;
+  access?: "SHARED" | "PERSONAL";
+  boundUserId?: string | null;
+};
 
 export default function TeamSettingsPage() {
   const { data: session } = useSession();
@@ -31,22 +36,22 @@ export default function TeamSettingsPage() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [draftIds, setDraftIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [resetFor, setResetFor] = useState<{ userId: string; password: string } | null>(null);
   const isAdmin = viewerRole === "OWNER" || viewerRole === "ADMIN";
 
+  function mailboxesFor(member: Member) {
+    return identities.filter(
+      (identity) => identity.access !== "PERSONAL" || identity.boundUserId === member.user.id,
+    );
+  }
+
   async function load() {
-    const [teamRes, idRes] = await Promise.all([
-      fetch("/api/team"),
-      fetch("/api/identities"),
-    ]);
+    const teamRes = await fetch("/api/team");
     if (teamRes.ok) {
       const data = await teamRes.json();
       setMembers(data.members || []);
       setViewerRole(data.role ?? null);
-    }
-    if (idRes.ok) {
-      const list = (await idRes.json()) as Identity[];
-      // Personal mailboxes cannot be assigned to other profiles.
-      setIdentities(list.filter((identity) => identity.access !== "PERSONAL"));
+      setIdentities((data.identities || []) as Identity[]);
     }
   }
 
@@ -125,6 +130,25 @@ export default function TeamSettingsPage() {
     load();
   }
 
+  async function resetPassword(member: Member) {
+    const ok = await confirm({
+      title: `Reset password for ${member.user.name || member.user.email}?`,
+      description:
+        "Their current password stops working. The new one only signs them in, then they must choose their own.",
+      confirmLabel: "Reset password",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/team/${member.user.id}`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || "Could not reset password");
+      return;
+    }
+    setResetFor({ userId: member.user.id, password: data.temporaryPassword });
+    toast.success("Password reset — copy it now");
+  }
+
   return (
     <div>
       <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Team</h1>
@@ -161,13 +185,15 @@ export default function TeamSettingsPage() {
         {role === "MEMBER" && (
           <div>
             <div className="mb-2 text-[13px] font-medium text-text-2">
-              Assign shared mailboxes. Personal ones stay with their owner and never appear here.
+              Assign shared mailboxes. A personal mailbox is tied to one person and is not listed here.
             </div>
-            {identities.length === 0 ? (
+            {identities.filter((identity) => identity.access !== "PERSONAL").length === 0 ? (
               <p className="text-[13px] text-text-3">No shared mailboxes connected yet.</p>
             ) : (
               <div className="space-y-2">
-                {identities.map((identity) => (
+                {identities
+                  .filter((identity) => identity.access !== "PERSONAL")
+                  .map((identity) => (
                   <label key={identity.id} className="flex items-center gap-2 text-[13px]">
                     <input
                       type="checkbox"
@@ -206,7 +232,12 @@ export default function TeamSettingsPage() {
             member.role !== "OWNER" &&
             member.user.id !== session?.user?.id &&
             (member.role !== "ADMIN" || viewerRole === "OWNER");
+          const canReset =
+            isAdmin &&
+            member.user.id !== session?.user?.id &&
+            (member.role === "MEMBER" || member.role === "ADMIN");
           const editing = editingUserId === member.user.id;
+          const memberMailboxes = mailboxesFor(member);
           return (
             <div key={member.id} className="rounded-xl border border-border bg-surface px-4 py-3">
               <div className="flex items-start justify-between gap-3">
@@ -222,6 +253,11 @@ export default function TeamSettingsPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  {canReset && (
+                    <Button size="sm" variant="secondary" onClick={() => resetPassword(member)}>
+                      Reset password
+                    </Button>
+                  )}
                   {isAdmin && member.role === "MEMBER" && (
                     <>
                       <Button
@@ -251,12 +287,26 @@ export default function TeamSettingsPage() {
                   </span>
                 </div>
               </div>
+              {resetFor?.userId === member.user.id && (
+                <div className="mt-3 rounded-[11px] border border-accent bg-accent-tint p-4 text-[13px]">
+                  <div className="font-medium">Temporary password (shown once)</div>
+                  <div className="mt-1 mono text-[15px]">{resetFor.password}</div>
+                  <p className="mt-2 text-text-2">
+                    Hand this over out of band. It only signs them in. Mail stays locked until they
+                    choose a new password.
+                  </p>
+                </div>
+              )}
               {editing && (
                 <div className="mt-4 space-y-3 border-t border-border pt-4">
-                  {identities.length === 0 ? (
+                  <p className="text-[13px] text-text-2">
+                    Shared mailboxes can go to any member. A personal mailbox can be taken off this
+                    person and given back only to them.
+                  </p>
+                  {memberMailboxes.length === 0 ? (
                     <p className="text-[13px] text-text-3">No mailboxes connected yet.</p>
                   ) : (
-                    identities.map((identity) => (
+                    memberMailboxes.map((identity) => (
                       <label key={identity.id} className="flex items-center gap-2 text-[13px]">
                         <input
                           type="checkbox"
@@ -266,6 +316,9 @@ export default function TeamSettingsPage() {
                           }
                         />
                         <span className="mono">{identity.email}</span>
+                        {identity.access === "PERSONAL" && (
+                          <span className="text-text-3">Personal</span>
+                        )}
                       </label>
                     ))
                   )}

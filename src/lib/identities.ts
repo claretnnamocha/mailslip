@@ -1,6 +1,7 @@
 import type { MailIdentity, WorkspaceMember, WorkspaceRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
+import { folderNamespace } from "@/lib/mail/folder-scope";
 import type { ConnectionConfig } from "@/lib/mail/types";
 
 export async function getSessionUser(userId: string) {
@@ -74,19 +75,25 @@ export async function assignedIdentityIds(userId: string, workspaceId: string) {
   return [...new Set([...grants.map((grant) => grant.identityId), ...owned.map((identity) => identity.id)])];
 }
 
+function personalBoundTo(identity: Pick<MailIdentity, "access" | "boundUserId" | "ownerUserId">) {
+  if (identity.access !== "PERSONAL") return null;
+  return identity.boundUserId || identity.ownerUserId;
+}
+
 export async function syncMemberIdentities(
   userId: string,
   workspaceId: string,
   identityIds: string[],
 ) {
   const identities = await prisma.mailIdentity.findMany({ where: { workspaceId } });
-  // Personal mailboxes cannot be assigned to or controlled by other profiles.
-  const assignable = identities.filter((identity) => identity.access !== "PERSONAL");
-  const valid = new Set(assignable.map((identity) => identity.id));
-  const wanted = new Set(identityIds.filter((id) => valid.has(id)));
+  // Shared mailboxes can move between members. A personal mailbox can only
+  // come back to the person it was created for.
+  const shared = identities.filter((identity) => identity.access !== "PERSONAL");
+  const validShared = new Set(shared.map((identity) => identity.id));
+  const wantedShared = new Set(identityIds.filter((id) => validShared.has(id)));
 
-  for (const identity of assignable) {
-    const assigned = wanted.has(identity.id);
+  for (const identity of shared) {
+    const assigned = wantedShared.has(identity.id);
     if (assigned) {
       await prisma.identityGrant.upsert({
         where: { identityId_userId: { identityId: identity.id, userId } },
@@ -103,6 +110,28 @@ export async function syncMemberIdentities(
       await prisma.mailIdentity.update({
         where: { id: identity.id },
         data: { ownerUserId: null },
+      });
+    }
+  }
+
+  const wantedPersonal = new Set(identityIds);
+  for (const identity of identities) {
+    if (personalBoundTo(identity) !== userId) continue;
+    const assigned = wantedPersonal.has(identity.id);
+    if (assigned) {
+      if (identity.ownerUserId !== userId || identity.boundUserId !== userId) {
+        await prisma.mailIdentity.update({
+          where: { id: identity.id },
+          data: { ownerUserId: userId, boundUserId: userId },
+        });
+      }
+      continue;
+    }
+    if (identity.ownerUserId === userId || !identity.boundUserId) {
+      await prisma.identityGrant.deleteMany({ where: { identityId: identity.id } });
+      await prisma.mailIdentity.update({
+        where: { id: identity.id },
+        data: { ownerUserId: null, boundUserId: userId },
       });
     }
   }
@@ -176,9 +205,46 @@ export function canManageIdentity(
   identity: Pick<MailIdentity, "access" | "ownerUserId">,
 ) {
   if (identity.access === "PERSONAL") {
-    return identity.ownerUserId === userId;
+    if (identity.ownerUserId === userId) return true;
+    // Detached personal mailbox: an admin can disconnect it, not read it.
+    return !identity.ownerUserId && isAdminRole(role);
   }
   return isAdminRole(role) || identity.ownerUserId === userId;
+}
+
+/** Which folder prefix this address owns, and which sibling prefixes to hide. */
+export async function folderIsolationContext(identity: MailIdentity, backing: MailIdentity) {
+  const loginUser = (backing.username || identity.username || "").trim().toLowerCase();
+  const host = (backing.imapHost || identity.imapHost || "").trim().toLowerCase();
+  const namespace = folderNamespace(identity.email, identity.username || backing.username);
+  if (!loginUser) return { namespace, foreignNamespaces: [] as string[] };
+
+  const rows = await prisma.mailIdentity.findMany({
+    where: { workspaceId: identity.workspaceId },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      imapHost: true,
+      backingIdentityId: true,
+    },
+  });
+
+  const foreign = new Set<string>();
+  for (const row of rows) {
+    if (row.id === identity.id) continue;
+    const rowUser = (row.username || "").trim().toLowerCase();
+    const rowHost = (row.imapHost || "").trim().toLowerCase();
+    const sameLogin =
+      (rowUser === loginUser && (!rowHost || !host || rowHost === host)) ||
+      row.backingIdentityId === backing.id ||
+      row.backingIdentityId === identity.id;
+    if (!sameLogin) continue;
+    const ns = folderNamespace(row.email, row.username || backing.username);
+    if (ns && ns !== namespace) foreign.add(ns);
+  }
+
+  return { namespace, foreignNamespaces: [...foreign] };
 }
 
 export function identityToConfig(identity: MailIdentity): ConnectionConfig | null {

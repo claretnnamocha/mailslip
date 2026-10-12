@@ -72,6 +72,7 @@ model User {
 
   memberships       WorkspaceMember[]
   identities        MailIdentity[]    @relation("IdentityOwner")
+  boundIdentities   MailIdentity[]    @relation("IdentityBoundUser")
   grants            IdentityGrant[]
   signatures        Signature[]
   templates         Template[]
@@ -125,6 +126,8 @@ model MailIdentity {
   id               String           @id @default(cuid())
   workspaceId      String
   ownerUserId      String?
+  /// PERSONAL mailboxes may be detached, then assigned back only to this user.
+  boundUserId      String?
   type             IdentityType     @default(OWN_MAILBOX)
   access           IdentityAccess   @default(SHARED)
   email            String
@@ -165,6 +168,7 @@ model MailIdentity {
 
   workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner            User?            @relation("IdentityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  boundUser        User?            @relation("IdentityBoundUser", fields: [boundUserId], references: [id], onDelete: SetNull)
   backingIdentity  MailIdentity?    @relation("ScopedBacking", fields: [backingIdentityId], references: [id], onDelete: SetNull)
   scopedChildren   MailIdentity[]   @relation("ScopedBacking")
   domain           Domain?          @relation(fields: [domainId], references: [id], onDelete: SetNull)

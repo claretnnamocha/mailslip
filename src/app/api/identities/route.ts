@@ -120,6 +120,7 @@ export async function POST(request: Request) {
     data: {
       workspaceId: membership.workspaceId,
       ownerUserId,
+      boundUserId: access === "PERSONAL" ? ownerUserId : null,
       type: body.type || "OWN_MAILBOX",
       access,
       email: body.email,

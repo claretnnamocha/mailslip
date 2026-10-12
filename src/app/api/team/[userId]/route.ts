@@ -1,8 +1,10 @@
+import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { getPrimaryWorkspace, isAdminRole, syncMemberIdentities } from "@/lib/identities";
+import { hashPassword } from "@/lib/password";
 
 async function loadTarget(workspaceId: string, userId: string) {
   return prisma.workspaceMember.findUnique({
@@ -37,6 +39,48 @@ export async function PATCH(
   const body = assignSchema.parse(await request.json());
   await syncMemberIdentities(target.userId, membership.workspaceId, body.identityIds);
   return NextResponse.json({ ok: true, identityIds: body.identityIds });
+}
+
+export async function POST(
+  _request: Request,
+  context: { params: Promise<{ userId: string }> },
+) {
+  const authResult = await requireUser();
+  if ("error" in authResult) return authResult.error;
+
+  const membership = await getPrimaryWorkspace(authResult.userId);
+  if (!membership || !isAdminRole(membership.role)) {
+    return jsonError("Only owners and admins can reset passwords", 403);
+  }
+
+  const { userId } = await context.params;
+  if (userId === authResult.userId) {
+    return jsonError("Use change password for your own account", 400);
+  }
+
+  const target = await loadTarget(membership.workspaceId, userId);
+  if (!target) return jsonError("Not found", 404);
+  if (target.role === "OWNER") {
+    return jsonError("The workspace owner password cannot be reset here", 400);
+  }
+  if (target.role !== "ADMIN" && target.role !== "MEMBER") {
+    return jsonError("Only a member or admin password can be reset", 400);
+  }
+
+  const temporaryPassword = randomBytes(9).toString("base64url");
+  await prisma.user.update({
+    where: { id: target.userId },
+    data: {
+      passwordHash: await hashPassword(temporaryPassword),
+      mustChangePassword: true,
+    },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    temporaryPassword,
+    note: "This password only signs them in. They must choose a new one before they can use mail.",
+  });
 }
 
 export async function DELETE(

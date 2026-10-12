@@ -32,8 +32,10 @@ export async function PATCH(
   const body = patchSchema.parse(await request.json());
 
   let ownerUserId = identity.ownerUserId;
+  let boundUserId = identity.boundUserId;
   if (body.access === "PERSONAL") {
     ownerUserId = identity.ownerUserId || authResult.userId;
+    boundUserId = identity.boundUserId || ownerUserId;
     await prisma.identityGrant.deleteMany({ where: { identityId: identity.id } });
   }
 
@@ -43,7 +45,7 @@ export async function PATCH(
       access: body.access,
       displayName: body.displayName,
       color: body.color,
-      ...(body.access === "PERSONAL" ? { ownerUserId } : {}),
+      ...(body.access === "PERSONAL" ? { ownerUserId, boundUserId } : {}),
     },
   });
 

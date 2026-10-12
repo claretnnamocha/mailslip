@@ -1,8 +1,10 @@
 import type { MailIdentity } from "@prisma/client";
 import {
+  folderIsolationContext,
   identityToConfig,
   resolveBackingIdentity,
 } from "@/lib/identities";
+import { folderInNamespace, mailboxPathVisible, scopedCreateParent, visibleMailboxFolders } from "./folder-scope";
 import {
   appendMessage,
   getImapMessages,
@@ -122,14 +124,44 @@ function meta(identity: MailIdentity) {
   };
 }
 
+async function folderContext(identity: MailIdentity, backing: MailIdentity) {
+  return folderIsolationContext(identity, backing);
+}
+
+async function visibleFolder(
+  identity: MailIdentity,
+  backing: MailIdentity,
+  folder: string,
+) {
+  const { namespace, foreignNamespaces } = await folderContext(identity, backing);
+  return mailboxPathVisible(folder, namespace, foreignNamespaces);
+}
+
+/** Bulk edits on Inbox/Sent/… would change the login mailbox, not just this address. */
+async function assertPrivateBulkFolder(identity: MailIdentity, backing: MailIdentity, folder: string) {
+  const { namespace, foreignNamespaces } = await folderContext(identity, backing);
+  if (!mailboxPathVisible(folder, namespace, foreignNamespaces)) {
+    throw new Error("That mailbox belongs to a different address");
+  }
+  if (namespace && !folderInNamespace({ path: folder }, namespace)) {
+    throw new Error("That folder is shared with the login mailbox");
+  }
+}
+
 export async function fetchFolders(identity: MailIdentity) {
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
 
-  if (backing.incomingProtocol === "POP3") return listPop3Folders();
-  if (backing.incomingProtocol === "JMAP") return listJmapFolders(config);
-  return listFolders(config);
+  const folders =
+    backing.incomingProtocol === "POP3"
+      ? await listPop3Folders()
+      : backing.incomingProtocol === "JMAP"
+        ? await listJmapFolders(config)
+        : await listFolders(config);
+
+  const { namespace, foreignNamespaces } = await folderIsolationContext(identity, backing);
+  return visibleMailboxFolders(folders, namespace, foreignNamespaces);
 }
 
 export async function fetchMessages(
@@ -139,6 +171,7 @@ export async function fetchMessages(
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  if (!(await visibleFolder(identity, backing, folder))) return [];
   const m = meta(identity);
 
   let messages: MailMessageSummary[];
@@ -166,6 +199,7 @@ export async function fetchMessage(
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  if (!(await visibleFolder(identity, backing, folder))) return null;
   const m = meta(identity);
 
   const msg =
@@ -201,6 +235,7 @@ export async function fetchThread(
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  if (!(await visibleFolder(identity, backing, folder))) return [];
   const m = meta(identity);
 
   let messages;
@@ -241,6 +276,13 @@ export async function updateMessageFlags(
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  if (!(await visibleFolder(identity, backing, folder))) {
+    throw new Error("That mailbox belongs to a different address");
+  }
+  if (recipientScopeForIdentity(identity)) {
+    const message = await fetchMessage(identity, folder, uid, remoteId);
+    if (!message) throw new Error("That message belongs to a different address");
+  }
   const key = remoteId || String(uid);
 
   if (backing.incomingProtocol === "JMAP") {
@@ -262,13 +304,24 @@ export async function createIdentityMailbox(
   if (backing.incomingProtocol !== "IMAP") {
     throw new Error("Creating mailboxes requires IMAP");
   }
-  return createMailbox(config, name, parentPath);
+  const { namespace } = await folderIsolationContext(identity, backing);
+  const parent = scopedCreateParent(namespace, parentPath);
+  if (namespace && parent === namespace) {
+    try {
+      await createMailbox(config, namespace);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!/exist/i.test(message)) throw error;
+    }
+  }
+  return createMailbox(config, name, parent);
 }
 
 export async function markIdentityFolderRead(identity: MailIdentity, folder: string) {
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  await assertPrivateBulkFolder(identity, backing, folder);
   if (backing.incomingProtocol === "IMAP") {
     return markAllSeen(config, folder);
   }
@@ -289,6 +342,7 @@ export async function emptyIdentityMailbox(identity: MailIdentity, folder: strin
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  await assertPrivateBulkFolder(identity, backing, folder);
   if (backing.incomingProtocol !== "IMAP") {
     throw new Error("Emptying a mailbox requires IMAP");
   }
@@ -305,6 +359,16 @@ export async function moveMail(
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+  if (
+    !(await visibleFolder(identity, backing, folder)) ||
+    !(await visibleFolder(identity, backing, destination))
+  ) {
+    throw new Error("That mailbox belongs to a different address");
+  }
+  if (recipientScopeForIdentity(identity)) {
+    const message = await fetchMessage(identity, folder, uid, remoteId);
+    if (!message) throw new Error("That message belongs to a different address");
+  }
   const key = remoteId || String(uid);
 
   if (backing.incomingProtocol === "POP3") {
@@ -400,6 +464,8 @@ export async function searchIdentityMail(identity: MailIdentity, query: string, 
   const backing = await resolveBackingIdentity(identity);
   const config = identityToConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
+
+  if (!(await visibleFolder(identity, backing, folder))) return [];
 
   if (backing.incomingProtocol === "IMAP") {
     const found = (await searchMessages(config, folder, query, meta(identity))).map((m) => ({

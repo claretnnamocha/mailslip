@@ -29,7 +29,24 @@ export async function GET() {
     })),
   );
 
-  return NextResponse.json({ members: withIdentities, role: membership.role });
+  const identities = isAdminRole(membership.role)
+    ? (
+        await prisma.mailIdentity.findMany({
+          where: { workspaceId: membership.workspaceId },
+          select: { id: true, email: true, access: true, boundUserId: true, ownerUserId: true },
+          orderBy: { email: "asc" },
+        })
+      )
+        .filter((row) => row.access === "SHARED" || row.boundUserId || row.ownerUserId)
+        .map((row) => ({
+          id: row.id,
+          email: row.email,
+          access: row.access,
+          boundUserId: row.access === "PERSONAL" ? row.boundUserId || row.ownerUserId : null,
+        }))
+    : [];
+
+  return NextResponse.json({ members: withIdentities, role: membership.role, identities });
 }
 
 const schema = z.object({

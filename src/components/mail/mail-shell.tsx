@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
@@ -10,6 +10,7 @@ import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
 import { clientSignOut } from "@/lib/client-sign-out";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
+import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export function MailShell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const shortcutsOn = useSyncExternalStore(subscribeShortcuts, readShortcutsEnabled, () => false);
   const [syncTick, setSyncTick] = useState(0);
   const {
     identities,
@@ -135,6 +137,7 @@ export function MailShell() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!readShortcutsEnabled()) return;
       const target = e.target as HTMLElement | null;
       const typing =
         target &&
@@ -345,7 +348,7 @@ export function MailShell() {
         </div>
       )}
 
-      {searchOpen && !query && (
+      {shortcutsOn && searchOpen && !query && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-surface px-4 py-2 text-[12px] text-text-3 shadow-[var(--shadow)]">
           Press <span className="mono">?</span> for shortcuts
         </div>

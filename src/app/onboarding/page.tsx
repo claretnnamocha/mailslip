@@ -313,8 +313,8 @@ export default function OnboardingPage() {
                 <span>
                   <span className="block text-[14px] font-medium text-text">Personal</span>
                   <span className="mt-0.5 block text-[13px] text-text-2">
-                    Only {assignee ? assignee.name || assignee.email : "you"} can use or control this
-                    mailbox. No other profile can access it.
+                    Only {assignee ? assignee.name || assignee.email : "you"} can read this
+                    mailbox. An admin can detach it, but it can only be given back to that person.
                   </span>
                 </span>
               </label>
