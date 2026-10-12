@@ -355,7 +355,13 @@ export default function OnboardingPage() {
                 </button>
               ))}
             </div>
-            <div className="mt-8 flex justify-end">
+            <div className="mt-8 flex justify-between">
+              <Button
+                variant="ghost"
+                onClick={() => router.push(assignee ? "/settings/team" : "/settings/identities")}
+              >
+                Back
+              </Button>
               <Button
                 onClick={() => {
                   if (form.connectType === "domain") {
