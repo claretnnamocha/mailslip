@@ -1,7 +1,8 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
+import { accountIsDisabled } from "@/lib/identities";
 import { verifyPassword } from "@/lib/password";
 import {
   isInternalHost,
@@ -11,6 +12,10 @@ import {
 } from "@/lib/public-url";
 
 prepareAuthHostEnv();
+
+class AccountDisabledError extends CredentialsSignin {
+  code = "account_disabled";
+}
 
 const providers = [];
 
@@ -61,6 +66,7 @@ providers.push(
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (user?.passwordHash && (await verifyPassword(password, user.passwordHash))) {
+        if (await accountIsDisabled(user.id)) throw new AccountDisabledError();
         return {
           id: user.id,
           name: user.name,
@@ -212,6 +218,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           image: user.image,
           loginName: (user as { loginName?: string }).loginName,
         });
+        if (await accountIsDisabled(dbUser.id)) {
+          throw new AccountDisabledError();
+        }
         token.userId = dbUser.id;
         token.mustChangePassword = dbUser.mustChangePassword;
         token.email = email;
@@ -225,7 +234,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { id: token.userId as string },
           select: { id: true, mustChangePassword: true },
         });
-        if (!existing) {
+        if (!existing || (await accountIsDisabled(existing.id))) {
           return {
             ...token,
             userId: undefined,

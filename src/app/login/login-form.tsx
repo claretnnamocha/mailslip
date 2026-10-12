@@ -58,12 +58,16 @@ export function LoginForm({ allowSignup: allowSignupProp }: { allowSignup: boole
     setLoading(true);
     setError("");
     try {
-      await signIn("credentials", {
+      const result = await signIn("credentials", {
         email,
         password,
         callbackUrl: "/mail",
         redirect: false,
       });
+      if (result?.code === "account_disabled") {
+        setError("This account is disabled. Ask an admin to enable it.");
+        return;
+      }
       // BYOD: Auth.js may return error/url quirks while still setting the session cookie.
       const session = await getSession();
       if (session?.user) {

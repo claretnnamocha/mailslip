@@ -13,9 +13,14 @@ async function loadTarget(workspaceId: string, userId: string) {
   });
 }
 
-const assignSchema = z.object({
-  identityIds: z.array(z.string()),
-});
+const patchSchema = z
+  .object({
+    identityIds: z.array(z.string()).optional(),
+    disabled: z.boolean().optional(),
+  })
+  .refine((body) => body.identityIds !== undefined || body.disabled !== undefined, {
+    message: "Nothing to update",
+  });
 
 export async function PATCH(
   request: Request,
@@ -26,19 +31,46 @@ export async function PATCH(
 
   const membership = await getPrimaryWorkspace(authResult.userId);
   if (!membership || !isAdminRole(membership.role)) {
-    return jsonError("Only owners and admins can assign mailboxes", 403);
+    return jsonError("Only owners and admins can update people", 403);
   }
 
   const { userId } = await context.params;
   const target = await loadTarget(membership.workspaceId, userId);
   if (!target) return jsonError("Not found", 404);
-  if (target.role !== "MEMBER") {
-    return jsonError("Admins already have every mailbox in the workspace", 400);
+
+  const body = patchSchema.parse(await request.json());
+
+  if (body.disabled !== undefined) {
+    if (userId === authResult.userId) {
+      return jsonError("You cannot disable yourself", 400);
+    }
+    if (target.role === "OWNER") {
+      return jsonError("The workspace owner cannot be disabled", 400);
+    }
+    if (target.role === "ADMIN" && membership.role !== "OWNER") {
+      return jsonError("Only the owner can disable or enable an admin", 403);
+    }
+    if (target.role !== "ADMIN" && target.role !== "MEMBER") {
+      return jsonError("Only a member or admin can be disabled", 400);
+    }
+    await prisma.workspaceMember.update({
+      where: { id: target.id },
+      data: { disabled: body.disabled },
+    });
   }
 
-  const body = assignSchema.parse(await request.json());
-  await syncMemberIdentities(target.userId, membership.workspaceId, body.identityIds);
-  return NextResponse.json({ ok: true, identityIds: body.identityIds });
+  if (body.identityIds) {
+    if (target.role !== "MEMBER") {
+      return jsonError("Admins already have every mailbox in the workspace", 400);
+    }
+    await syncMemberIdentities(target.userId, membership.workspaceId, body.identityIds);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    disabled: body.disabled ?? target.disabled,
+    identityIds: body.identityIds,
+  });
 }
 
 export async function POST(

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 type Member = {
   id: string;
   role: string;
+  disabled?: boolean;
   identityIds: string[];
   user: { id: string; name?: string | null; email: string };
 };
@@ -149,12 +150,45 @@ export default function TeamSettingsPage() {
     toast.success("Password reset — copy it now");
   }
 
+  async function setDisabled(member: Member, disabled: boolean) {
+    if (disabled) {
+      const ok = await confirm({
+        title: `Disable ${member.user.name || member.user.email}?`,
+        description: "They cannot sign in until you enable them. Their mailboxes stay assigned.",
+        confirmLabel: "Disable",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    const res = await fetch(`/api/team/${member.user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || (disabled ? "Could not disable" : "Could not enable"));
+      return;
+    }
+    toast.success(disabled ? "Account disabled" : "Account enabled");
+    load();
+  }
+
   return (
     <div>
-      <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Team</h1>
-      <p className="mt-2 text-[15px] text-text-2">
-        Admin provisioning — create accounts and hand credentials out-of-band. Not an email invite.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[27px] font-semibold tracking-[-0.02em]">Team</h1>
+          <p className="mt-2 text-[15px] text-text-2">
+            Admin provisioning — create accounts and hand credentials out-of-band. Not an email invite.
+          </p>
+        </div>
+        {isAdmin && (
+          <Link href="/onboarding">
+            <Button size="sm">Add identity</Button>
+          </Link>
+        )}
+      </div>
 
       {isAdmin && (
       <form
@@ -236,13 +270,25 @@ export default function TeamSettingsPage() {
             isAdmin &&
             member.user.id !== session?.user?.id &&
             (member.role === "MEMBER" || member.role === "ADMIN");
+          const canToggle =
+            isAdmin &&
+            member.user.id !== session?.user?.id &&
+            member.role !== "OWNER" &&
+            (member.role !== "ADMIN" || viewerRole === "OWNER");
           const editing = editingUserId === member.user.id;
           const memberMailboxes = mailboxesFor(member);
           return (
             <div key={member.id} className="rounded-xl border border-border bg-surface px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium">{member.user.name || member.user.email}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium">{member.user.name || member.user.email}</div>
+                    {member.disabled && (
+                      <span className="rounded-md bg-hover px-1.5 py-0.5 text-[11px] font-medium text-text-2">
+                        Disabled
+                      </span>
+                    )}
+                  </div>
                   <div className="mono text-[12px] text-text-3">{member.user.email}</div>
                   {member.role === "MEMBER" && (
                     <div className="mt-2 text-[12px] text-text-2">
@@ -253,6 +299,15 @@ export default function TeamSettingsPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  {canToggle && (
+                    <Button
+                      size="sm"
+                      variant={member.disabled ? "secondary" : "danger"}
+                      onClick={() => setDisabled(member, !member.disabled)}
+                    >
+                      {member.disabled ? "Enable" : "Disable"}
+                    </Button>
+                  )}
                   {canReset && (
                     <Button size="sm" variant="secondary" onClick={() => resetPassword(member)}>
                       Reset password
@@ -272,7 +327,7 @@ export default function TeamSettingsPage() {
                       </Button>
                       <Link href={`/onboarding?for=${member.user.id}`}>
                         <Button size="sm" variant="secondary">
-                          Connect mailbox
+                          Add identity
                         </Button>
                       </Link>
                     </>

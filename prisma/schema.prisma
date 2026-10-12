@@ -114,6 +114,8 @@ model WorkspaceMember {
   workspaceId String
   userId      String
   role        WorkspaceRole @default(MEMBER)
+  /// Disabled people keep their mailboxes but cannot sign in.
+  disabled    Boolean       @default(false)
   createdAt   DateTime      @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
