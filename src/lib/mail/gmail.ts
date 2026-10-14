@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { platformOrigin, prepareAuthHostEnv } from "@/lib/public-url";
+import { isPlatformHost, resolveHostContext } from "@/lib/tenant";
 
 export const GMAIL_IMAP_HOST = "imap.gmail.com";
 export const GMAIL_IMAP_PORT = 993;
@@ -21,6 +23,8 @@ export type GmailConnectState = {
   displayName?: string;
   loginHint?: string;
   returnTo: GmailReturnPath;
+  /** Browser origin the connect flow started on. Google always returns to the platform host. */
+  origin?: string;
   exp: number;
 };
 
@@ -46,9 +50,31 @@ function clientSecret() {
   return secret;
 }
 
-/** Must match a redirect URI on the Google OAuth client. Same host the user is on. */
-export function gmailRedirectUri(origin: string) {
-  return `${origin.replace(/\/$/, "")}/api/mail/gmail/callback`;
+/**
+ * The only redirect URI to register on the Google client.
+ * Customer domains bounce back here after Google returns to the platform host.
+ */
+export function gmailRedirectUri() {
+  prepareAuthHostEnv();
+  return `${platformOrigin()}/api/mail/gmail/callback`;
+}
+
+export async function isAllowedGmailReturnOrigin(origin: string) {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash || url.username || url.password) {
+    return false;
+  }
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname.endsWith(".localhost");
+  if (local) return url.protocol === "http:";
+  if (url.protocol !== "https:") return false;
+  if (isPlatformHost(url.host)) return true;
+  const ctx = await resolveHostContext(url.host);
+  return ctx.kind === "tenant" && ctx.tenant != null;
 }
 
 export function isGmailReturnPath(value: string | null | undefined): value is GmailReturnPath {

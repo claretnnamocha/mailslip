@@ -85,10 +85,11 @@ export async function GET(request: Request) {
       displayName,
       loginHint,
       returnTo,
+      origin,
       exp: Date.now() + 10 * 60 * 1000,
     });
     const authorize = googleAuthorizeUrl({
-      redirectUri: gmailRedirectUri(origin),
+      redirectUri: gmailRedirectUri(),
       state,
       loginHint,
     });

@@ -12,6 +12,7 @@ import {
   GMAIL_SMTP_HOST,
   GMAIL_SMTP_PORT,
   gmailRedirectUri,
+  isAllowedGmailReturnOrigin,
   packGmailTokens,
   unpackGmailState,
   type GmailReturnPath,
@@ -43,10 +44,39 @@ function publicError(error: unknown) {
   return message.slice(0, 180);
 }
 
+function sameOrigin(a: string, b: string) {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: Request) {
-  const origin = requestPublicOrigin(request.headers, request.url);
   const url = new URL(request.url);
+  const here = requestPublicOrigin(request.headers, request.url);
   const fallback = "/settings/identities" as const;
+
+  const stateRawEarly = url.searchParams.get("state");
+  if (stateRawEarly) {
+    try {
+      const pending = unpackGmailState(stateRawEarly);
+      if (pending.origin && !sameOrigin(pending.origin, here)) {
+        if (!(await isAllowedGmailReturnOrigin(pending.origin))) {
+          return redirectBack(here, fallback, {
+            gmailError: "This Google sign-in cannot return to that site.",
+          });
+        }
+        const next = new URL("/api/mail/gmail/callback", pending.origin);
+        url.searchParams.forEach((value, key) => next.searchParams.set(key, value));
+        return NextResponse.redirect(next);
+      }
+    } catch {
+      /* invalid state is handled below */
+    }
+  }
+
+  const origin = here;
 
   let returnTo: GmailReturnPath = fallback;
   let context: Record<string, string | undefined> = {};
@@ -58,7 +88,7 @@ export async function GET(request: Request) {
         googleError === "access_denied"
           ? "Google sign-in was cancelled."
           : googleError === "redirect_uri_mismatch"
-            ? "This site's address is not registered as a Google redirect URI."
+            ? `${gmailRedirectUri()} is not registered as a Google redirect URI.`
             : "Google sign-in failed. Try again.";
       const stateRaw = url.searchParams.get("state");
       if (stateRaw) {
@@ -132,7 +162,7 @@ export async function GET(request: Request) {
       ownerUserId = target.userId;
     }
 
-    const tokens = await exchangeGoogleCode(code, gmailRedirectUri(origin));
+    const tokens = await exchangeGoogleCode(code, gmailRedirectUri());
     const profile = await fetchGoogleProfile(tokens.accessToken);
     if (state.loginHint && state.loginHint !== profile.email) {
       return redirectBack(origin, returnTo, {
