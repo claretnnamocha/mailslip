@@ -96,6 +96,14 @@ export default async function LandingPage() {
           </div>
         </div>
       </main>
+      <footer className="flex justify-center gap-4 px-6 py-8 text-[13px] text-text-3">
+        <Link href="/privacy" className="hover:text-text">
+          Privacy
+        </Link>
+        <Link href="/terms" className="hover:text-text">
+          Terms
+        </Link>
+      </footer>
     </div>
   );
 }
