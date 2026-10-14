@@ -1,6 +1,7 @@
 import type { MailIdentity, WorkspaceMember, WorkspaceRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
+import { ensureGmailAccessToken } from "@/lib/mail/gmail";
 import { folderNamespace } from "@/lib/mail/folder-scope";
 import type { ConnectionConfig } from "@/lib/mail/types";
 
@@ -256,12 +257,16 @@ export async function folderIsolationContext(identity: MailIdentity, backing: Ma
   return { namespace, foreignNamespaces: [...foreign] };
 }
 
-export function identityToConfig(identity: MailIdentity): ConnectionConfig | null {
-  if (!identity.credentialsEnc || !identity.username) return null;
+function connectionConfig(
+  identity: MailIdentity,
+  password: string,
+  accessToken?: string,
+): ConnectionConfig {
   return {
     email: identity.email,
-    username: identity.username,
-    password: decryptSecret(identity.credentialsEnc),
+    username: identity.username || identity.email,
+    password,
+    accessToken,
     incomingProtocol: identity.incomingProtocol,
     imapHost: identity.imapHost,
     imapPort: identity.imapPort,
@@ -274,6 +279,24 @@ export function identityToConfig(identity: MailIdentity): ConnectionConfig | nul
     smtpPort: identity.smtpPort,
     smtpTls: identity.smtpTls,
   };
+}
+
+export function identityToConfig(identity: MailIdentity): ConnectionConfig | null {
+  if (!identity.credentialsEnc || !identity.username) return null;
+  if (identity.authMode === "OAUTH") return null;
+  return connectionConfig(identity, decryptSecret(identity.credentialsEnc));
+}
+
+/** Password identities resolve immediately. Gmail OAuth refreshes the access token first. */
+export async function resolveIdentityConfig(
+  identity: MailIdentity,
+): Promise<ConnectionConfig | null> {
+  if (!identity.credentialsEnc || !identity.username) return null;
+  if (identity.authMode === "OAUTH") {
+    const accessToken = await ensureGmailAccessToken(identity.id, identity.credentialsEnc);
+    return connectionConfig(identity, "", accessToken);
+  }
+  return identityToConfig(identity);
 }
 
 export async function resolveBackingIdentity(identity: MailIdentity): Promise<MailIdentity> {

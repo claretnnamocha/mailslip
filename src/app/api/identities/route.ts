@@ -6,6 +6,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { getPrimaryWorkspace, isAdminRole, listAccessibleIdentities } from "@/lib/identities";
 import { testIdentityConnection } from "@/lib/mail/service";
 import { checkDeliverability } from "@/lib/mail/dns-health";
+import { isGmailConnection } from "@/lib/mail/gmail-account";
 
 export async function GET() {
   const authResult = await requireUser();
@@ -68,6 +69,13 @@ export async function POST(request: Request) {
   }
 
   const body = createSchema.parse(await request.json());
+
+  if (isGmailConnection(body)) {
+    return jsonError("Gmail accounts connect with Google sign-in, not a password.", 400);
+  }
+  if (body.authMode === "OAUTH") {
+    return jsonError("OAuth mailbox connect is only available for Gmail.", 400);
+  }
 
   let ownerUserId = authResult.userId;
   if (body.assignUserId && body.assignUserId !== authResult.userId) {

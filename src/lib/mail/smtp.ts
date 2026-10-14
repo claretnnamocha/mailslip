@@ -6,10 +6,9 @@ export async function testSmtpConnection(config: ConnectionConfig) {
     host: config.smtpHost || "",
     port: config.smtpPort || 587,
     secure: config.smtpPort === 465,
-    auth: {
-      user: config.username,
-      pass: config.password,
-    },
+    auth: config.accessToken
+      ? { type: "OAuth2", user: config.username, accessToken: config.accessToken }
+      : { user: config.username, pass: config.password },
     tls: config.smtpTls === false ? { rejectUnauthorized: false } : undefined,
   });
   await transporter.verify();
@@ -21,10 +20,9 @@ export async function sendMail(config: ConnectionConfig, payload: SendPayload) {
     host: config.smtpHost || "",
     port: config.smtpPort || 587,
     secure: config.smtpPort === 465,
-    auth: {
-      user: config.username,
-      pass: config.password,
-    },
+    auth: config.accessToken
+      ? { type: "OAuth2", user: config.username, accessToken: config.accessToken }
+      : { user: config.username, pass: config.password },
   });
 
   const from = payload.from || config.email;

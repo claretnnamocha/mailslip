@@ -1,7 +1,7 @@
 import type { MailIdentity } from "@prisma/client";
 import {
   folderIsolationContext,
-  identityToConfig,
+  resolveIdentityConfig,
   resolveBackingIdentity,
 } from "@/lib/identities";
 import { folderInNamespace, mailboxPathVisible, scopedCreateParent, visibleMailboxFolders } from "./folder-scope";
@@ -39,11 +39,12 @@ import {
 import { messageMatchesScope, recipientScopeForIdentity, summaryMatchesRecipient } from "./scoped";
 import type { ConnectionConfig, MailMessageSummary, SendPayload } from "./types";
 
-function toConfig(identity: MailIdentity, password: string): ConnectionConfig {
+function toConfig(identity: MailIdentity, password: string, accessToken?: string): ConnectionConfig {
   return {
     email: identity.email,
     username: identity.username || identity.email,
     password,
+    accessToken,
     incomingProtocol: identity.incomingProtocol,
     imapHost: identity.imapHost,
     imapPort: identity.imapPort,
@@ -76,8 +77,9 @@ export async function testIdentityConnection(
     | "smtpTls"
   >,
   password: string,
+  accessToken?: string,
 ) {
-  const config = toConfig(identity as MailIdentity, password);
+  const config = toConfig(identity as MailIdentity, password, accessToken);
 
   let incoming: { ok: true; messages: number; unseen: number };
   if (identity.incomingProtocol === "POP3") {
@@ -150,7 +152,7 @@ async function assertPrivateBulkFolder(identity: MailIdentity, backing: MailIden
 
 export async function fetchFolders(identity: MailIdentity) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
 
   const folders =
@@ -169,7 +171,7 @@ export async function fetchMessages(
   folder = "INBOX",
 ): Promise<MailMessageSummary[]> {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (!(await visibleFolder(identity, backing, folder))) return [];
   const m = meta(identity);
@@ -197,7 +199,7 @@ export async function fetchMessage(
 ) {
   const key = remoteId || String(uid);
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (!(await visibleFolder(identity, backing, folder))) return null;
   const m = meta(identity);
@@ -233,7 +235,7 @@ export async function fetchThread(
   if (ids.length === 0) return [];
 
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (!(await visibleFolder(identity, backing, folder))) return [];
   const m = meta(identity);
@@ -274,7 +276,7 @@ export async function updateMessageFlags(
   remoteId?: string,
 ) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (!(await visibleFolder(identity, backing, folder))) {
     throw new Error("That mailbox belongs to a different address");
@@ -299,7 +301,7 @@ export async function createIdentityMailbox(
   parentPath?: string,
 ) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (backing.incomingProtocol !== "IMAP") {
     throw new Error("Creating mailboxes requires IMAP");
@@ -319,7 +321,7 @@ export async function createIdentityMailbox(
 
 export async function markIdentityFolderRead(identity: MailIdentity, folder: string) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   await assertPrivateBulkFolder(identity, backing, folder);
   if (backing.incomingProtocol === "IMAP") {
@@ -340,7 +342,7 @@ export async function markIdentityFolderRead(identity: MailIdentity, folder: str
 
 export async function emptyIdentityMailbox(identity: MailIdentity, folder: string) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   await assertPrivateBulkFolder(identity, backing, folder);
   if (backing.incomingProtocol !== "IMAP") {
@@ -357,7 +359,7 @@ export async function moveMail(
   remoteId?: string,
 ) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (
     !(await visibleFolder(identity, backing, folder)) ||
@@ -385,7 +387,7 @@ export async function moveMail(
 
 export async function sendIdentityMail(identity: MailIdentity, payload: SendPayload) {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
 
   if (backing.incomingProtocol === "JMAP") {
@@ -462,7 +464,7 @@ function buildImapAppendRaw(
 
 export async function searchIdentityMail(identity: MailIdentity, query: string, folder = "INBOX") {
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
 
   if (!(await visibleFolder(identity, backing, folder))) return [];
@@ -494,7 +496,7 @@ export async function fetchQuota(identity: MailIdentity) {
     };
   }
   const backing = await resolveBackingIdentity(identity);
-  const config = identityToConfig(backing);
+  const config = await resolveIdentityConfig(backing);
   if (!config) throw new Error("Identity credentials missing");
   if (backing.incomingProtocol !== "IMAP") {
     return { supported: false as const, message: "This server doesn't report a quota" };

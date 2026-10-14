@@ -15,10 +15,9 @@ function clientFromConfig(config: ConnectionConfig) {
     host: config.imapHost || "",
     port: config.imapPort || 993,
     secure: config.imapTls !== false,
-    auth: {
-      user: config.username,
-      pass: config.password,
-    },
+    auth: config.accessToken
+      ? { user: config.username, accessToken: config.accessToken }
+      : { user: config.username, pass: config.password },
     logger: false,
   });
 }

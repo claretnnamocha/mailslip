@@ -38,6 +38,14 @@ export default function IdentitiesSettingsPage() {
 
   useEffect(() => {
     load();
+    const params = new URLSearchParams(window.location.search);
+    const gmailError = params.get("gmailError");
+    const connected = params.get("gmail") === "connected";
+    const email = params.get("email");
+    if (!gmailError && !connected) return;
+    if (gmailError) toast.error(gmailError);
+    if (connected) toast.success(email ? `${email} connected` : "Gmail connected");
+    window.history.replaceState({}, "", "/settings/identities");
   }, []);
 
   function canManage(identity: Identity) {

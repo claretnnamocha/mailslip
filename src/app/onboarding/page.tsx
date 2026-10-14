@@ -7,6 +7,7 @@ import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isGmailAddress, isGmailHost } from "@/lib/mail/gmail-account";
 import { toast } from "sonner";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -42,11 +43,11 @@ const PRESETS: Record<
 > = {
   gmail: {
     label: "Gmail",
-    hint: "imap.gmail.com · app password required",
+    hint: "Sign in with Google",
     values: {
       preset: "gmail",
       incomingProtocol: "IMAP",
-      authMode: "APP_PASSWORD",
+      authMode: "OAUTH",
       imapHost: "imap.gmail.com",
       imapPort: "993",
       pop3Host: "pop.gmail.com",
@@ -132,9 +133,23 @@ export default function OnboardingPage() {
     dkimOk?: boolean | null;
   } | null>(null);
   const [error, setError] = useState("");
+  const [gmailConfigured, setGmailConfigured] = useState<boolean | null>(null);
+
+  const gmailFlow =
+    form.preset === "gmail" ||
+    isGmailAddress(form.email) ||
+    isGmailHost(form.imapHost) ||
+    isGmailHost(form.smtpHost) ||
+    isGmailHost(form.pop3Host);
 
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("for") || "";
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("for") || "";
+    const gmailError = params.get("gmailError");
+    const gmailConnected = params.get("gmail") === "connected";
+    const hintedEmail = params.get("email") || "";
+    const hintedName = params.get("name") || "";
+    const hintedAccess = params.get("access");
     let cancelled = false;
     (async () => {
       const res = await fetch("/api/team");
@@ -154,12 +169,70 @@ export default function OnboardingPage() {
       if (requested && list.some((member) => member.user.id === requested)) {
         setAssignUserId(requested);
       }
+      if (hintedAccess === "PERSONAL" || hintedAccess === "SHARED") {
+        setAccess(hintedAccess);
+      }
+      if (gmailConnected || gmailError) {
+        setForm((current) => ({
+          ...current,
+          ...PRESETS.gmail.values,
+          email: hintedEmail || current.email,
+          username: hintedEmail || current.username,
+          displayName: hintedName || current.displayName,
+        }));
+        if (gmailError) {
+          setError(gmailError);
+          setStep(3);
+          toast.error(gmailError);
+        } else {
+          setStep(6);
+          toast.success(hintedEmail ? `${hintedEmail} connected` : "Gmail connected");
+          const listRes = await fetch("/api/identities");
+          if (!cancelled && listRes.ok) {
+            const list = (await listRes.json()) as Array<{
+              email: string;
+              mxOk?: boolean | null;
+              spfOk?: boolean | null;
+              dkimOk?: boolean | null;
+              dmarcOk?: boolean | null;
+            }>;
+            const match = list.find(
+              (row) => row.email.toLowerCase() === hintedEmail.toLowerCase(),
+            );
+            if (match) {
+              setHealth({
+                mxOk: match.mxOk ?? undefined,
+                spfOk: match.spfOk ?? undefined,
+                dkimOk: match.dkimOk,
+                dmarcOk: match.dmarcOk ?? undefined,
+              });
+            }
+          }
+        }
+        if (!cancelled) window.history.replaceState({}, "", "/onboarding");
+      }
       setAllowed(true);
     })();
     return () => {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!gmailFlow) return;
+    let cancelled = false;
+    fetch("/api/mail/gmail/status")
+      .then((res) => (res.ok ? res.json() : { configured: false }))
+      .then((data: { configured?: boolean }) => {
+        if (!cancelled) setGmailConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setGmailConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gmailFlow]);
 
   const assignable = members.filter(
     (member) => member.role === "MEMBER" && member.user.id !== session?.user?.id,
@@ -168,6 +241,19 @@ export default function OnboardingPage() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function startGmailConnect() {
+    const params = new URLSearchParams({
+      returnTo: "/onboarding",
+      access,
+    });
+    if (assignUserId) params.set("assignUserId", assignUserId);
+    const name = form.displayName.trim();
+    if (name) params.set("displayName", name);
+    const hint = form.email.trim().toLowerCase();
+    if (hint.includes("@")) params.set("loginHint", hint);
+    window.location.assign(`/api/mail/gmail/connect?${params.toString()}`);
   }
 
   function applyPreset(id: PresetId) {
@@ -390,11 +476,21 @@ export default function OnboardingPage() {
                 value={form.email}
                 onChange={(e) => {
                   const email = e.target.value;
-                  setForm((f) => ({
-                    ...f,
-                    email,
-                    username: !f.username || f.username === f.email ? email : f.username,
-                  }));
+                  setForm((f) => {
+                    const next = {
+                      ...f,
+                      email,
+                      username: !f.username || f.username === f.email ? email : f.username,
+                    };
+                    if (!isGmailAddress(email)) return next;
+                    return {
+                      ...next,
+                      ...PRESETS.gmail.values,
+                      email,
+                      username: email,
+                      displayName: f.displayName,
+                    };
+                  });
                 }}
                 placeholder="ada@aurelia.studio"
               />
@@ -443,7 +539,17 @@ export default function OnboardingPage() {
               </Button>
               <Button
                 onClick={() => {
-                  if (!form.preset) applyPreset("custom");
+                  if (isGmailAddress(form.email) && form.preset !== "gmail") {
+                    setForm((current) => ({
+                      ...current,
+                      ...PRESETS.gmail.values,
+                      email: current.email,
+                      username: current.email,
+                      displayName: current.displayName,
+                    }));
+                  } else if (!form.preset) {
+                    applyPreset("custom");
+                  }
                   setStep(3);
                 }}
                 disabled={!form.email.includes("@")}
@@ -454,11 +560,45 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && gmailFlow && (
+          <div>
+            <h1 className="text-[30px] font-semibold tracking-[-0.02em]">Connect Gmail</h1>
+            <p className="mt-3 text-[16px] text-text-2">
+              Gmail accounts connect with Google. Mailslip asks for mailbox access and stores
+              a refresh token. It never asks for your Gmail password.
+            </p>
+            <div className="mt-8 rounded-[14px] border border-border bg-surface p-5 text-[14px]">
+              <div className="mono text-text-2">{form.email}</div>
+              <div className="mt-2 text-text-3">Google sign-in · imap.gmail.com · smtp.gmail.com</div>
+            </div>
+            {form.preset === "gmail" && !isGmailAddress(form.email) && (
+              <p className="mt-4 text-[13px] text-text-2">
+                This address will sign in through Google. Choose Custom on the previous step if
+                the mailbox is not a Google account.
+              </p>
+            )}
+            {gmailConfigured === false && (
+              <p className="mt-4 text-[13px] text-danger">
+                Google sign-in is not configured on this server.
+              </p>
+            )}
+            {error && <p className="mt-4 text-[13px] text-danger">{error}</p>}
+            <div className="mt-8 flex justify-between">
+              <Button variant="ghost" onClick={() => setStep(2)}>
+                Back
+              </Button>
+              <Button onClick={startGmailConnect} disabled={gmailConfigured !== true}>
+                {gmailConfigured === null ? "Checking Google…" : "Continue with Google"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && !gmailFlow && (
           <div>
             <h1 className="text-[30px] font-semibold tracking-[-0.02em]">Incoming & auth</h1>
             <p className="mt-3 text-[16px] text-text-2">
-              Gmail and Outlook usually need an app password — not your normal login.
+              Outlook usually needs an app password — not your normal login.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {(Object.keys(PRESETS) as PresetId[]).map((id) => (
@@ -501,7 +641,6 @@ export default function OnboardingPage() {
                 >
                   <option value="PASSWORD">Password</option>
                   <option value="APP_PASSWORD">App password</option>
-                  <option value="OAUTH">OAuth 2.0</option>
                 </select>
               </label>
 

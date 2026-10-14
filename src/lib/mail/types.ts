@@ -65,6 +65,8 @@ export type ConnectionConfig = {
   email: string;
   username: string;
   password: string;
+  /** Present for Gmail OAuth (XOAUTH2). Password is unused in that case. */
+  accessToken?: string;
   incomingProtocol: "IMAP" | "POP3" | "JMAP";
   imapHost?: string | null;
   imapPort?: number | null;
