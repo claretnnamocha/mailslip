@@ -14,7 +14,6 @@ import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
-import { cn } from "@/lib/utils";
 import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
 
 type NotifyPrefs = {
@@ -386,21 +385,6 @@ export function MailShell() {
               </button>
             )}
           </div>
-          <button
-            type="button"
-            aria-pressed={unreadOnly}
-            aria-label={unreadOnly ? "Show all mail" : "Show unread mail"}
-            title={unreadOnly ? "Show all mail" : "Show unread mail"}
-            onClick={() => setUnreadOnly((value) => !value)}
-            className={cn(
-              "mono shrink-0 rounded-[7px] border px-2.5 py-1.5 text-[11px] font-medium",
-              unreadOnly
-                ? "border-accent/30 bg-accent-tint text-accent"
-                : "border-border bg-surface-2 text-text-2 hover:bg-hover",
-            )}
-          >
-            Unread
-          </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
