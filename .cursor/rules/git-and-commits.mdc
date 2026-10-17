@@ -1,0 +1,51 @@
+---
+description: Commits and PRs; no agent co-author trailers in git history
+alwaysApply: true
+---
+
+# Mailslip: Git & commits
+
+Single-repo app (`mailslip/`). Run git from the repo root.
+
+## When to commit
+
+- **Only commit when the user explicitly asks.** Never auto-commit.
+- Never commit `.env`, secrets, or build output (`.next/`, `node_modules/`).
+
+## Commit shape
+
+- Prefer **Conventional Commits:** `feat|fix|chore|docs|refactor|test|ci|build|perf`.
+- Imperative subject, no trailing period. Keep the header ≤ 72 characters when practical.
+
+## No AI attribution in git history
+
+- No `Co-authored-by:` lines (`Cursor`, `cursoragent@cursor.com`, or any agent).
+- No `Made-with-Cursor`, `generated-by`, or similar footers.
+- Use `git commit` with `-m` / HEREDOC only. **Never** pass `--trailer` or co-author flags.
+- If a commit on disk includes agent co-author text **before push**, amend the message to remove it.
+- After commit, run `git log -1 --format=%B` and confirm there is **no** `Co-authored-by` line before `git push`.
+
+### When Cursor still injects a trailer
+
+`git commit -m` may append `Co-authored-by` from IDE/CLI attribution. Amend with an editor that writes only your message:
+
+```bash
+cat > /tmp/mailslip-git-editor.sh << 'SCRIPT'
+#!/bin/sh
+printf '%s\n' "type: subject" > "$1"
+SCRIPT
+chmod +x /tmp/mailslip-git-editor.sh
+GIT_EDITOR=/tmp/mailslip-git-editor.sh git commit --amend
+```
+
+Disable **Cursor Settings → Agent → Attribution**. CLI: `~/.cursor/cli-config.json` →
+`attribution.attributeCommitsToAgent` / `attributePRsToAgent` = `false`.
+
+## Pre-commit
+
+Run applicable gates before commit when the change touches app code: `npm run lint`,
+`npm run build` (or project scripts in `package.json`). Fix failures before committing.
+
+## Safety
+
+- Never force-push `main` unless the user explicitly requests it.
