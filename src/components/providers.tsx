@@ -7,6 +7,7 @@ import { DialogProvider } from "@/components/dialog-provider";
 import type { HostingMode } from "@/lib/hosting";
 import { clientSignOut } from "@/lib/client-sign-out";
 import { Toaster } from "sonner";
+import { PushNotificationBanner } from "@/components/pwa/push-notification-banner";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 
 const HostingContext = createContext<HostingMode>("cloud");
@@ -53,6 +54,7 @@ export function Providers({
             <ThemeProvider>
               <DialogProvider>
                 <PwaProvider />
+                <PushNotificationBanner />
                 {children}
                 <Toaster
                   position="bottom-left"
