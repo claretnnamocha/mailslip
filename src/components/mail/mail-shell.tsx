@@ -206,7 +206,17 @@ export function MailShell() {
     }
     function onMessage(event: MessageEvent) {
       if (event.data?.type === "new-mail" || event.data?.type === "open-mail") {
-        const identityId = event.data.identityId || event.data.payload?.identityId;
+        const payload = event.data.payload as
+          | { title?: string; body?: string; identityId?: string }
+          | undefined;
+        const identityId = event.data.identityId || payload?.identityId;
+        if (event.data?.type === "new-mail" && payload?.title) {
+          const pref = notifyPrefs.current?.identities.find((item) => item.id === identityId);
+          if (pref?.desktop !== false) {
+            toast.message(payload.title, { description: payload.body });
+          }
+          if (pref?.sound) playNotifySound();
+        }
         if (identityId) setActiveIdentityId(identityId);
         refreshSilently();
       }

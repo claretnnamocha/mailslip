@@ -4,7 +4,7 @@ import { sendPushToUser } from "@/lib/push";
 import { fetchMessages } from "@/lib/mail/service";
 import type { MailMessageSummary } from "@/lib/mail/types";
 
-const POLL_MS = 60_000;
+const POLL_MS = 30_000;
 const LOCK_KEY = "mail-notify-lock";
 const LOCK_STALE_MS = 90_000;
 
@@ -42,6 +42,7 @@ function payloadFor(identity: MailIdentity, fresh: MailMessageSummary[]) {
       url,
       tag: `mail-${identity.id}`,
       identityId: identity.id,
+      renotify: true,
     };
   }
   return {
@@ -50,7 +51,36 @@ function payloadFor(identity: MailIdentity, fresh: MailMessageSummary[]) {
     url,
     tag: `mail-${identity.id}`,
     identityId: identity.id,
+    renotify: true,
   };
+}
+
+/** Baseline unseen IDs so only mail arriving after subscribe/poll triggers push. */
+export async function seedNotifyCursor(identity: MailIdentity) {
+  const messages = await fetchMessages(identity, "INBOX");
+  const remoteIds = messages.filter((message) => !message.seen).map((message) => message.remoteId);
+  await prisma.mailNotifyCursor.upsert({
+    where: { identityId: identity.id },
+    create: { identityId: identity.id, lastRemoteIds: remoteIds, lastCheckedAt: new Date() },
+    update: { lastRemoteIds: remoteIds, lastCheckedAt: new Date() },
+  });
+  await prisma.mailIdentity.update({
+    where: { id: identity.id },
+    data: { lastSyncAt: new Date() },
+  });
+}
+
+export async function seedNotifyCursorsForUser(userId: string) {
+  const { listAccessibleIdentities } = await import("@/lib/identities");
+  const identities = await listAccessibleIdentities(userId);
+  for (const identity of identities) {
+    if (!identity.connected || !identity.credentialsEnc) continue;
+    try {
+      await seedNotifyCursor(identity);
+    } catch {
+      /* mailbox unreachable */
+    }
+  }
 }
 
 async function acquireLock() {
@@ -80,9 +110,7 @@ async function notifyIdentity(identity: MailIdentity) {
   });
 
   if (!cursor) {
-    await prisma.mailNotifyCursor.create({
-      data: { identityId: identity.id, lastRemoteIds: remoteIds, lastCheckedAt: new Date() },
-    });
+    await seedNotifyCursor(identity);
     return;
   }
 
@@ -154,6 +182,6 @@ export function startMailNotifier() {
       console.error("[mailslip] mail notify failed", error);
     });
   };
-  setTimeout(tick, 15_000);
+  setTimeout(tick, 5_000);
   setInterval(tick, POLL_MS);
 }

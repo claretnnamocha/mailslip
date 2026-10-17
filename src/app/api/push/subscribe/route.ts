@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, jsonError } from "@/lib/api";
 import { prisma } from "@/lib/db";
+import { seedNotifyCursorsForUser } from "@/lib/mail/notify";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
   if ("error" in authResult) return authResult.error;
   const body = subscribeSchema.parse(await request.json());
 
+  const hadSubscription = await prisma.pushSubscription.count({ where: { userId: authResult.userId } });
+
   const row = await prisma.pushSubscription.upsert({
     where: { endpoint: body.endpoint },
     create: {
@@ -35,6 +38,10 @@ export async function POST(request: Request) {
       userAgent: body.userAgent,
     },
   });
+
+  if (hadSubscription === 0) {
+    void seedNotifyCursorsForUser(authResult.userId).catch(() => undefined);
+  }
 
   return NextResponse.json({ id: row.id });
 }
