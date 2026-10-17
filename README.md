@@ -4,7 +4,7 @@ A calm, provider-agnostic webmail **client** — not an email host. Bring your o
 
 > Beautiful email, without switching providers.
 
-Domain: `mailslip.woksol.space` · Sub-product of Linqr · MIT
+Cloud: [mailslip.uselinqr.io](https://mailslip.uselinqr.io) · Sub-product of Linqr · MIT
 
 ## Architecture
 

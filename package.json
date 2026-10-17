@@ -1,6 +1,12 @@
 {
   "name": "mailslip",
   "version": "0.1.0",
+  "description": "Calm, provider-agnostic webmail client (BYO IMAP, POP3, JMAP, SMTP). Cloud or self-hosted.",
+  "homepage": "https://mailslip.uselinqr.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/claretnnamocha/mailslip.git"
+  },
   "private": true,
   "scripts": {
     "dev": "next dev",

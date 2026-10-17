@@ -2,7 +2,7 @@
 
 **A calm, provider-agnostic webmail client.**
 Version: 1.0 (design) · Last updated: July 4, 2026
-Domain: `mailslip.woksol.space` · A sub-product of Linqr.
+Domain: `mailslip.uselinqr.io` · A sub-product of Linqr.
 
 ---
 
@@ -12,7 +12,7 @@ Mailslip is a beautiful, hosted email **client** — not an email **service**. U
 
 It ships in two forms from the same codebase:
 
-- **Cloud** — hosted at mailslip.woksol.space.
+- **Cloud** — hosted at mailslip.uselinqr.io.
 - **Self-hosted** — open source (MIT), run your own instance.
 
 ### 1.1 The core bet
