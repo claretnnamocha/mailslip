@@ -23,10 +23,30 @@ async function readStoredKeys() {
     prisma.appSetting.findUnique({ where: { key: PRIVATE_KEY } }),
   ]);
   if (pub?.value && priv?.value) return { publicKey: pub.value, privateKey: priv.value };
+  if (pub?.value || priv?.value) {
+    await prisma.appSetting.deleteMany({
+      where: { key: { in: [PUBLIC_KEY, PRIVATE_KEY] } },
+    });
+  }
   return null;
 }
 
-export async function getVapidKeys() {
+async function writeStoredKeys(keys: { publicKey: string; privateKey: string }) {
+  await prisma.$transaction([
+    prisma.appSetting.upsert({
+      where: { key: PUBLIC_KEY },
+      create: { key: PUBLIC_KEY, value: keys.publicKey },
+      update: { value: keys.publicKey },
+    }),
+    prisma.appSetting.upsert({
+      where: { key: PRIVATE_KEY },
+      create: { key: PRIVATE_KEY, value: keys.privateKey },
+      update: { value: keys.privateKey },
+    }),
+  ]);
+}
+
+async function resolveVapidKeys() {
   const fromEnv = {
     publicKey: process.env.VAPID_PUBLIC_KEY?.trim() || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() || "",
     privateKey: process.env.VAPID_PRIVATE_KEY?.trim() || "",
@@ -38,17 +58,28 @@ export async function getVapidKeys() {
 
   const generated = webpush.generateVAPIDKeys();
   try {
-    await prisma.appSetting.createMany({
-      data: [
-        { key: PUBLIC_KEY, value: generated.publicKey },
-        { key: PRIVATE_KEY, value: generated.privateKey },
-      ],
-      skipDuplicates: true,
-    });
+    await writeStoredKeys(generated);
   } catch {
-    /* unique race — another worker wrote first */
+    /* race — another worker wrote first */
   }
   return (await readStoredKeys()) || generated;
+}
+
+let vapidBootstrap: Promise<{ publicKey: string; privateKey: string }> | null = null;
+
+/** Idempotent: env keys, else DB keys, else generate and persist. */
+export function ensureVapidKeys() {
+  if (!vapidBootstrap) {
+    vapidBootstrap = resolveVapidKeys().catch((error) => {
+      vapidBootstrap = null;
+      throw error;
+    });
+  }
+  return vapidBootstrap;
+}
+
+export async function getVapidKeys() {
+  return ensureVapidKeys();
 }
 
 function vapidSubject() {

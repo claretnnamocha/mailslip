@@ -2,7 +2,7 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Zitadel from "next-auth/providers/zitadel";
 import { prisma } from "@/lib/db";
-import { accountIsDisabled } from "@/lib/identities";
+import { accountIsDisabled } from "@/lib/account-disabled";
 import { verifyPassword } from "@/lib/password";
 import {
   isInternalHost,

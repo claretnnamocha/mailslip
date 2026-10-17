@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { accountIsDisabled } from "@/lib/identities";
+import { accountIsDisabled } from "@/lib/account-disabled";
 
 export async function requireUser() {
   const session = await auth();
