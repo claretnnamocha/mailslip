@@ -155,7 +155,7 @@ export default function NotificationsPage() {
     const result = await installEvent.userChoice;
     if (result.outcome === "accepted") {
       setInstallEvent(null);
-      setStandalone(true);
+      setInstalled(true);
     }
   }
 
