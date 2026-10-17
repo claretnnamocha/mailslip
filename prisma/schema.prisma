@@ -67,6 +67,8 @@ model User {
   density           Density   @default(COMFORTABLE)
   keepEmailWhite    Boolean   @default(true)
   undoSendSeconds   Int       @default(10)
+  /// App-icon unread badge (PWA / installed app).
+  notifyBadge       Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -86,6 +88,8 @@ model User {
   drafts            Draft[]
   scheduledSends    ScheduledSend[]
   snoozedMessages   SnoozedMessage[]
+  pushSubscriptions PushSubscription[]
+  notificationPrefs NotificationPref[]
 }
 
 model Workspace {
@@ -235,12 +239,42 @@ model Signature {
 
 model NotificationPref {
   id         String  @id @default(cuid())
+  userId     String
   identityId String
   desktop    Boolean @default(true)
-  sound        Boolean @default(false)
-  unreadBadge Boolean @default(true)
+  sound      Boolean @default(false)
 
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   identity MailIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, identityId])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Highest unseen remote ids already considered for push, per mailbox.
+model MailNotifyCursor {
+  identityId    String   @id
+  lastRemoteIds String[] @default([])
+  lastCheckedAt DateTime @default(now())
+}
+
+model AppSetting {
+  key   String @id
+  value String
 }
 
 model Template {

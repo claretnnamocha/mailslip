@@ -10,11 +10,17 @@ import { Compose } from "./compose";
 import { useMailStore } from "@/stores/mail-store";
 import { clientSignOut } from "@/lib/client-sign-out";
 import { resolveFolderPath } from "@/lib/mail/folder-map";
+import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
 import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+
+type NotifyPrefs = {
+  badge: boolean;
+  identities: { id: string; desktop: boolean; sound: boolean }[];
+};
 
 export function MailShell() {
   const router = useRouter();
@@ -34,9 +40,11 @@ export function MailShell() {
     setActiveIdentityId,
     folder,
     setFolder,
+    folders,
     setFolders,
     setMessages,
     setLoadingList,
+    loadingList,
     messages,
     selectedId,
     setSelectedId,
@@ -48,6 +56,25 @@ export function MailShell() {
   } = useMailStore();
   const folderRef = useRef(folder);
   folderRef.current = folder;
+  const silentRefresh = useRef(false);
+  const knownIds = useRef(new Set<string>());
+  const alertsPrimed = useRef(false);
+  const notifyPrefs = useRef<NotifyPrefs | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const identityId = params.get("identityId");
+    if (identityId) setActiveIdentityId(identityId);
+  }, [setActiveIdentityId]);
+
+  useEffect(() => {
+    void fetch("/api/settings/notifications")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: NotifyPrefs | null) => {
+        if (data) notifyPrefs.current = data;
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -111,8 +138,10 @@ export function MailShell() {
   useEffect(() => {
     if (identities.length === 0 || activeIdentityId === "all") return;
     let cancelled = false;
+    const silent = silentRefresh.current;
+    silentRefresh.current = false;
     (async () => {
-      setLoadingList(true);
+      if (!silent) setLoadingList(true);
       try {
         const params = new URLSearchParams({ folder, identityId: activeIdentityId });
         if (query.trim()) params.set("q", query.trim());
@@ -123,13 +152,80 @@ export function MailShell() {
       } catch {
         if (!cancelled) setMessages([]);
       } finally {
-        if (!cancelled) setLoadingList(false);
+        if (!cancelled && !silent) setLoadingList(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
+
+  useEffect(() => {
+    alertsPrimed.current = false;
+    knownIds.current = new Set();
+  }, [activeIdentityId, folder]);
+
+  useEffect(() => {
+    if (loadingList) return;
+    const unread = messages.filter((message) => !message.seen);
+    if (!alertsPrimed.current) {
+      knownIds.current = new Set(messages.map((message) => message.id));
+      alertsPrimed.current = true;
+      return;
+    }
+    const fresh = unread.filter((message) => !knownIds.current.has(message.id));
+    knownIds.current = new Set(messages.map((message) => message.id));
+    if (fresh.length === 0 || document.visibilityState !== "visible") return;
+    const pref = notifyPrefs.current?.identities.find((item) => item.id === activeIdentityId);
+    if (pref?.sound) playNotifySound();
+    if (pref?.desktop === false) return;
+    const first = fresh[0];
+    const who = first.from.name || first.from.address;
+    toast.message(fresh.length === 1 ? who : `${fresh.length} new messages`, {
+      description: fresh.length === 1 ? first.subject : first.subject,
+    });
+  }, [messages, activeIdentityId, loadingList]);
+
+  useEffect(() => {
+    if (notifyPrefs.current?.badge === false) {
+      void setUnreadBadge(0);
+      return;
+    }
+    const inbox = folders.find(
+      (item) => item.specialUse === "\\Inbox" || item.path.toUpperCase() === "INBOX",
+    );
+    const count =
+      inbox?.unseen ??
+      (folder.toUpperCase() === "INBOX" ? messages.filter((message) => !message.seen).length : 0);
+    void setUnreadBadge(count);
+  }, [folders, messages, folder]);
+
+  useEffect(() => {
+    function refreshSilently() {
+      silentRefresh.current = true;
+      setSyncTick((tick) => tick + 1);
+    }
+    function onMessage(event: MessageEvent) {
+      if (event.data?.type === "new-mail" || event.data?.type === "open-mail") {
+        const identityId = event.data.identityId || event.data.payload?.identityId;
+        if (identityId) setActiveIdentityId(identityId);
+        refreshSilently();
+      }
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") refreshSilently();
+    }
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshSilently();
+    }, 45_000);
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [setActiveIdentityId]);
 
   useEffect(() => {
     setMobileView(selectedId ? "message" : "list");
@@ -293,6 +389,8 @@ export function MailShell() {
           <button
             type="button"
             aria-pressed={unreadOnly}
+            aria-label={unreadOnly ? "Show all mail" : "Show unread mail"}
+            title={unreadOnly ? "Show all mail" : "Show unread mail"}
             onClick={() => setUnreadOnly((value) => !value)}
             className={cn(
               "mono shrink-0 rounded-[7px] border px-2.5 py-1.5 text-[11px] font-medium",

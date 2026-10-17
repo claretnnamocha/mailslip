@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { notFound, redirect } from "next/navigation";
 import { Providers } from "@/components/providers";
@@ -20,20 +20,41 @@ const geistMono = Geist_Mono({
 /** Hosting/vendor/tenant must be read per request, not baked at build. */
 export const dynamic = "force-dynamic";
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F7F6F3" },
+    { media: "(prefers-color-scheme: dark)", color: "#161514" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export async function generateMetadata(): Promise<Metadata> {
   const { brand } = await resolveHosting();
   return {
     metadataBase: new URL(platformOrigin()),
+    applicationName: brand,
     title: rootTitleMetadata(brand),
     description:
       "A calm, modern client for the email you already own. Your servers, your data, zero lock-in.",
+    manifest: "/manifest.webmanifest",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: brand,
+    },
+    formatDetection: { telephone: false },
     openGraph: {
       title: brand,
       description: "A calm, modern client for the email you already own.",
       images: ["/og.png"],
     },
     icons: {
-      icon: "/logo-512.png",
+      icon: [
+        { url: "/logo-192.png", sizes: "192x192", type: "image/png" },
+        { url: "/logo-512.png", sizes: "512x512", type: "image/png" },
+      ],
       apple: "/logo-512.png",
     },
   };

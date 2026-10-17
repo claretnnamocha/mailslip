@@ -7,6 +7,7 @@ import { DialogProvider } from "@/components/dialog-provider";
 import type { HostingMode } from "@/lib/hosting";
 import { clientSignOut } from "@/lib/client-sign-out";
 import { Toaster } from "sonner";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 
 const HostingContext = createContext<HostingMode>("cloud");
 const BrandContext = createContext("Mailslip");
@@ -51,6 +52,7 @@ export function Providers({
           <SessionGuard>
             <ThemeProvider>
               <DialogProvider>
+                <PwaProvider />
                 {children}
                 <Toaster
                   position="bottom-left"

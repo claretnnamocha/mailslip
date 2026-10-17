@@ -99,6 +99,83 @@ function threadsForList(
   return threads.filter((thread) => thread.messages.some((message) => !message.seen));
 }
 
+function folderHasCachedUnread(
+  mail: MailMessageSummary[] | undefined,
+  mutedIds: string[],
+) {
+  return Boolean(mail && threadsForList(mail, true, mutedIds).length > 0);
+}
+
+/** Keep folders that actually have unread mail, plus parents of those folders. */
+function pruneUnreadTree(
+  nodes: FolderNode<MailFolder>[],
+  mailByFolder: Record<string, MailMessageSummary[]>,
+  mutedIds: string[],
+  trustServerUnseen: boolean,
+): FolderNode<MailFolder>[] {
+  return nodes
+    .map((node) => ({
+      ...node,
+      children: pruneUnreadTree(node.children, mailByFolder, mutedIds, trustServerUnseen),
+    }))
+    .filter((node) => {
+      if (node.children.length > 0) return true;
+      const cached = mailByFolder[node.folder.path];
+      if (cached) return folderHasCachedUnread(cached, mutedIds);
+      return (
+        trustServerUnseen &&
+        node.folder.selectable !== false &&
+        (node.folder.unseen || 0) > 0
+      );
+    });
+}
+
+function countListedUnread(
+  nodes: FolderNode<MailFolder>[],
+  mailByFolder: Record<string, MailMessageSummary[]>,
+  mutedIds: string[],
+  trustServerUnseen: boolean,
+): number {
+  return nodes.reduce((sum, node) => {
+    const cached = mailByFolder[node.folder.path];
+    const own = cached
+      ? threadsForList(cached, true, mutedIds).length
+      : trustServerUnseen && node.folder.selectable !== false
+        ? node.folder.unseen || 0
+        : 0;
+    return sum + own + countListedUnread(node.children, mailByFolder, mutedIds, trustServerUnseen);
+  }, 0);
+}
+
+/** Open folders that already have unread mail, and ancestors of folders the server still reports as unread. */
+function unreadOpenPaths(
+  nodes: FolderNode<MailFolder>[],
+  mailByFolder: Record<string, MailMessageSummary[]>,
+  mutedIds: string[],
+  trustServerUnseen: boolean,
+  ancestors: string[] = [],
+): string[] {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    const cached = mailByFolder[node.folder.path];
+    const cachedUnread = folderHasCachedUnread(cached, mutedIds);
+    const serverUnread =
+      trustServerUnseen &&
+      !cached &&
+      node.folder.selectable !== false &&
+      (node.folder.unseen || 0) > 0;
+    if (cachedUnread) paths.push(...ancestors, node.folder.path);
+    else if (serverUnread) paths.push(...ancestors);
+    paths.push(
+      ...unreadOpenPaths(node.children, mailByFolder, mutedIds, trustServerUnseen, [
+        ...ancestors,
+        node.folder.path,
+      ]),
+    );
+  }
+  return paths;
+}
+
 type RowMenuHandler = (
   e: ReactMouseEvent,
   thread: MailThread<MailMessageSummary>,
@@ -158,11 +235,20 @@ export function MessageList({
   const [mailByFolder, setMailByFolder] = useState<Record<string, MailMessageSummary[]>>({});
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const seededFor = useRef<string | null>(null);
+  const unreadExpanded = useRef(false);
   const searching = query.trim().length > 0;
   const tree = buildFolderTree(folders);
   const hiddenMuted = showMuted ? [] : mutedIds;
   const searchThreads = threadsForList(messages, unreadOnly, hiddenMuted);
   const activeIdentity = identities.find((identity) => identity.id === activeIdentityId);
+  const trustServerUnseen = activeIdentity?.type !== "SCOPED_ALIAS";
+  const visibleTree =
+    unreadOnly && !searching
+      ? pruneUnreadTree(tree, mailByFolder, hiddenMuted, trustServerUnseen)
+      : tree;
+  const listedUnread = unreadOnly
+    ? countListedUnread(visibleTree, mailByFolder, hiddenMuted, trustServerUnseen)
+    : 0;
   const identityEmail = activeIdentity?.email || identities[0]?.email || "";
   const mailIdentityId = activeIdentityId !== "all" ? activeIdentityId : identities[0]?.id || "";
   const currentFolder = folders.find((item) => item.path === folder);
@@ -197,6 +283,32 @@ export function MessageList({
     if (messages.some((message) => message.folder !== folder)) return;
     setMailByFolder((prev) => ({ ...prev, [folder]: messages }));
   }, [folder, messages, loadingList, searching]);
+
+  useEffect(() => {
+    if (!unreadOnly) {
+      unreadExpanded.current = false;
+      return;
+    }
+    if (searching || unreadExpanded.current || !foldersReady || loadingList) return;
+    if (!mailByFolder[folder] && messages.some((message) => message.folder === folder)) return;
+    const muted = showMuted ? [] : mutedIds;
+    const paths = unreadOpenPaths(buildFolderTree(folders), mailByFolder, muted, trustServerUnseen);
+    unreadExpanded.current = true;
+    if (paths.length === 0) return;
+    setOpenPaths((prev) => [...new Set([...prev, ...paths])]);
+  }, [
+    unreadOnly,
+    searching,
+    folders,
+    folder,
+    messages,
+    mailByFolder,
+    showMuted,
+    mutedIds,
+    trustServerUnseen,
+    foldersReady,
+    loadingList,
+  ]);
 
   useEffect(() => {
     if (searching || !foldersReady) return;
@@ -631,12 +743,18 @@ export function MessageList({
       {!searching && (
         <div className="flex items-start gap-2 border-b border-border px-4 py-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{folderTitle}</h2>
+            <h2 className="truncate text-[15px] font-semibold tracking-[-0.01em]">
+              {unreadOnly ? "Unread" : folderTitle}
+            </h2>
             {identityEmail && (
               <p className="mono truncate text-[11px] text-text-3">{identityEmail}</p>
             )}
             <p className="mt-0.5 text-[12px] text-text-2">
-              {messages.length} {messages.length === 1 ? "message" : "messages"}, {unreadCount} unread
+              {unreadOnly
+                ? listedUnread === 0
+                  ? "Nothing unread"
+                  : `${listedUnread} unread`
+                : `${messages.length} ${messages.length === 1 ? "message" : "messages"}, ${unreadCount} unread`}
             </p>
             {mutedInFolder > 0 && (
               <button
@@ -656,9 +774,9 @@ export function MessageList({
           </div>
           <button
             type="button"
-            aria-label="Filter unread"
+            aria-label={unreadOnly ? "Show all mail" : "Show unread mail"}
             aria-pressed={unreadOnly}
-            title="Show unread only"
+            title={unreadOnly ? "Show all mail" : "Show unread mail"}
             onClick={() => onUnreadChange?.(!unreadOnly)}
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border",
@@ -689,7 +807,7 @@ export function MessageList({
           </div>
         )}
 
-        {foldersReady && !searching && tree.length === 0 && (
+        {foldersReady && !searching && !unreadOnly && tree.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <p className="text-[15px] font-medium">No folders</p>
             <p className="mt-1 text-[13px] text-text-2">
@@ -733,8 +851,23 @@ export function MessageList({
           </div>
         )}
 
+        {!searching && unreadOnly && foldersReady && loadingList && visibleTree.length === 0 && (
+          <ListSkeleton />
+        )}
+
+        {!searching && unreadOnly && foldersReady && !loadingList && visibleTree.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <p className="text-[15px] font-medium">No unread messages</p>
+            <p className="mt-1 text-[13px] text-text-2">
+              {trustServerUnseen
+                ? "Everything in this mailbox is read."
+                : "Everything in the folders you've opened is read."}
+            </p>
+          </div>
+        )}
+
         {!searching &&
-          tree.map((node) => (
+          visibleTree.map((node) => (
             <FolderBranch
               key={node.folder.path}
               node={node}
@@ -834,8 +967,14 @@ function FolderBranch({
 }) {
   const open = openPaths.includes(node.folder.path);
   const Icon = folderIcon(node.folder);
-  const count = groupedScopedUnseen(node, mailByFolder);
   const mail = mailByFolder[node.folder.path];
+  const scopedCount = groupedScopedUnseen(node, mailByFolder);
+  const count =
+    scopedCount > 0
+      ? scopedCount
+      : unreadOnly && !mail && node.folder.selectable !== false
+        ? node.folder.unseen || 0
+        : 0;
   const threads = mail ? threadsForList(mail, unreadOnly, mutedIds) : [];
   const isFavorite = favorites.includes(node.folder.path);
   const loading = open && loadingPath === node.folder.path && !mail;
@@ -937,7 +1076,7 @@ function FolderBranch({
                 onContextMenu={onRowContextMenu}
               />
             ))}
-          {selectable && mail && threads.length === 0 && !loading && (
+          {selectable && mail && threads.length === 0 && !loading && node.children.length === 0 && (
             <p
               className="py-2 text-[12px] text-text-3"
               style={{ paddingLeft: 28 + (depth + 1) * 14 }}

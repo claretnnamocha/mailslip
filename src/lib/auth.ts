@@ -269,9 +269,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         path === "/" ||
         path.startsWith("/login") ||
         path.startsWith("/register") ||
+        path.startsWith("/privacy") ||
+        path.startsWith("/terms") ||
+        path.startsWith("/offline") ||
+        path === "/manifest.webmanifest" ||
+        path === "/sw.js" ||
         path.startsWith("/api/auth") ||
         path.startsWith("/api/health") ||
-        path.startsWith("/api/hosting");
+        path.startsWith("/api/hosting") ||
+        path.startsWith("/api/cron/");
       if (isPublic) return true;
       if (!session?.user?.id) return false;
       if (
