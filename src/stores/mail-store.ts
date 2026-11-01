@@ -26,6 +26,7 @@ type MailState = {
   loadingList: boolean;
   loadingMessage: boolean;
   isReloading: boolean;
+  isRefreshing: boolean;
   refreshing: boolean;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
@@ -44,6 +45,7 @@ type MailState = {
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
   setIsReloading: (v: boolean) => void;
+  setIsRefreshing: (v: boolean) => void;
   setRefreshing: (v: boolean) => void;
   refresh: () => Promise<void>;
   refreshMessages: () => Promise<void>;
@@ -68,6 +70,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   loadingList: false,
   loadingMessage: false,
   isReloading: false,
+  isRefreshing: false,
   refreshing: false,
   composeOpen: false,
   composeMode: "new",
@@ -96,10 +99,11 @@ export const useMailStore = create<MailState>((set, get) => ({
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   setIsReloading: (isReloading) => set({ isReloading }),
+  setIsRefreshing: (isRefreshing) => set({ isRefreshing }),
   setRefreshing: (refreshing) => set({ refreshing }),
   refresh: async () => {
     const { activeIdentityId, folder } = get();
-    set({ refreshing: true, isReloading: true, loadingList: true });
+      set({ refreshing: true, isRefreshing: true, isReloading: true, loadingList: true });
     try {
       const params = new URLSearchParams({
         identityId: activeIdentityId,
@@ -111,7 +115,7 @@ export const useMailStore = create<MailState>((set, get) => ({
       const messages = Array.isArray(data) ? data : data.messages ?? [];
       set({ messages });
     } finally {
-      set({ refreshing: false, isReloading: false, loadingList: false });
+      set({ refreshing: false, isRefreshing: false, isReloading: false, loadingList: false });
     }
   },
   refreshMessages: async () => {
