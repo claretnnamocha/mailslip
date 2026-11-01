@@ -51,8 +51,10 @@ import {
   FlagIcon,
   FolderIcon,
   InboxIcon,
+  Loader2,
   MoreIcon,
   PaperclipIcon,
+  RefreshCw,
   SendIcon,
   StarIcon,
   TrashIcon,
@@ -217,8 +219,8 @@ export function MessageList({
     identities,
     setMessages,
     openCompose,
-    refreshMessages,
-    isRefreshing,
+    reloadMessages,
+    isReloading,
   } = useMailStore();
   const { density } = useTheme();
   const router = useRouter();
@@ -792,16 +794,21 @@ export function MessageList({
           </button>
           <Button
             type="button"
-            onClick={refreshMessages}
-            disabled={isRefreshing}
+            onClick={reloadMessages}
+            disabled={isReloading}
             className={cn(
               "flex h-8 shrink-0 items-center justify-center rounded-[9px] border px-2 text-[12px] font-medium",
-              isRefreshing
+              isReloading
                 ? "border-border bg-surface-2 text-text-3 cursor-not-allowed"
                 : "border-border bg-surface-2 text-text-2 hover:bg-hover",
             )}
           >
-            {isRefreshing ? "Reloading..." : "Reload"}
+            {isReloading ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <RefreshCw size={15} />
+            )}
+            <span>{isReloading ? "Reloading..." : "Reload"}</span>
           </Button>
           <button
             type="button"
