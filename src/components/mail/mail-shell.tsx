@@ -398,18 +398,20 @@ export function MailShell() {
               </button>
             )}
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => refresh()}
-            disabled={isRefreshing}
-            className="gap-2"
-          >
-            {isRefreshing ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : null}
-            Reload
-          </Button>
+          {folder.toUpperCase() === "INBOX" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => refresh()}
+              disabled={isRefreshing}
+              className="gap-2"
+            >
+              {isRefreshing ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : null}
+              Reload
+            </Button>
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1">
