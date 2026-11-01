@@ -97,5 +97,5 @@ export const useMailStore = create<MailState>((set) => ({
         ? s.selectedIds.filter((x) => x !== id)
         : [...s.selectedIds, id],
     })),
-  clearSelection: () => set({ selectedIds: [] })
+  clearSelection: () => set({ selectedIds: [] }),
 }));
