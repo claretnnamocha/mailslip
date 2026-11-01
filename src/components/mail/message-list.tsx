@@ -216,6 +216,8 @@ export function MessageList({
     identities,
     setMessages,
     openCompose,
+    refreshMessages,
+    isRefreshing,
   } = useMailStore();
   const { density } = useTheme();
   const router = useRouter();
@@ -786,6 +788,19 @@ export function MessageList({
             )}
           >
             <FilterIcon size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => refreshMessages()}
+            disabled={isRefreshing}
+            className={cn(
+              "flex h-8 shrink-0 items-center justify-center rounded-[9px] border px-2 text-[12px] font-medium",
+              isRefreshing
+                ? "border-border bg-surface-2 text-text-3 cursor-not-allowed"
+                : "border-border bg-surface-2 text-text-2 hover:bg-hover",
+            )}
+          >
+            {isRefreshing ? "Refreshing…" : "Reload"}
           </button>
           <button
             type="button"
