@@ -26,6 +26,7 @@ type MailState = {
   loadingList: boolean;
   loadingMessage: boolean;
   isRefreshing: boolean;
+  isReloading: boolean;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
   composeFullscreen: boolean;
@@ -43,6 +44,7 @@ type MailState = {
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
   refreshMessages: () => Promise<void>;
+  reloadMessages: () => Promise<void>;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -64,6 +66,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   loadingList: false,
   loadingMessage: false,
   isRefreshing: false,
+  isReloading: false,
   composeOpen: false,
   composeMode: "new",
   composeFullscreen: false,
@@ -106,6 +109,24 @@ export const useMailStore = create<MailState>((set, get) => ({
       set({ messages });
     } finally {
       set({ isRefreshing: false });
+    }
+  },
+  reloadMessages: async () => {
+    set({ isReloading: true });
+    try {
+      const { folder, activeIdentityId } = get();
+      const params = new URLSearchParams({ folder });
+      if (activeIdentityId !== "all") {
+        params.set("identityId", activeIdentityId);
+      }
+      const response = await fetch(`/api/mail/messages?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to reload messages");
+      }
+      const messages = (await response.json()) as MailMessageSummary[];
+      set({ messages });
+    } finally {
+      set({ isReloading: false });
     }
   },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
