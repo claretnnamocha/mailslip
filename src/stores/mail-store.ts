@@ -43,6 +43,7 @@ type MailState = {
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
   setIsRefreshing: (v: boolean) => void;
+  refresh: () => Promise<void>;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -51,7 +52,7 @@ type MailState = {
   clearSelection: () => void;
 };
 
-export const useMailStore = create<MailState>((set) => ({
+export const useMailStore = create<MailState>((set, get) => ({
   identities: [],
   workspaceRole: null,
   activeIdentityId: "all",
@@ -91,6 +92,25 @@ export const useMailStore = create<MailState>((set) => ({
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   setIsRefreshing: (isRefreshing) => set({ isRefreshing }),
+  refresh: async () => {
+    set({ isRefreshing: true });
+    try {
+      const { folder, activeIdentityId } = get();
+      const params = new URLSearchParams({ folder });
+      if (activeIdentityId !== "all") params.set("identityId", activeIdentityId);
+      const res = await fetch(`/api/mail/messages?${params.toString()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const messages = Array.isArray(data) ? data : data.messages;
+      if (Array.isArray(messages)) {
+        set({ messages });
+      }
+    } catch {
+      // Ignore refresh errors to avoid showing errors for empty inboxes or network issues.
+    } finally {
+      set({ isRefreshing: false });
+    }
+  },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
   setComposeFullscreen: (composeFullscreen) => set({ composeFullscreen }),
