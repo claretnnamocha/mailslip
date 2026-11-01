@@ -801,7 +801,7 @@ export function MessageList({
                 : "border-border bg-surface-2 text-text-2 hover:bg-hover",
             )}
           >
-            {isRefreshing ? "Refreshing…" : "Reload"}
+            {isRefreshing ? "Reloading..." : "Reload"}
           </Button>
           <button
             type="button"
