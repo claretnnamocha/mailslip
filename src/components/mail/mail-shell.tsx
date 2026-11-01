@@ -44,6 +44,7 @@ export function MailShell() {
     setMessages,
     setLoadingList,
     refreshMessages,
+    refreshing,
     loadingList,
     messages,
     selectedId,
@@ -399,7 +400,7 @@ export function MailShell() {
           <button
             className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50"
             onClick={() => refreshMessages()}
-            disabled={loadingList}
+            disabled={refreshing}
             aria-label="Refresh"
           >
             <RefreshCw size={18} />
