@@ -159,7 +159,9 @@ export function MailShell() {
           if (!silent && !reload) {
             setMessages([]);
           }
-          toast.error("Failed to load messages");
+          if (!silent) {
+            toast.error("Failed to load messages");
+          }
         }
       } finally {
         clearTimeout(timeoutId);
