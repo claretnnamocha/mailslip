@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { MailFolder, MailMessage, MailMessageSummary } from "@/lib/mail/types";
+import { fetchMailMessages } from "@/lib/mail/client-actions";
 
 export type IdentitySummary = {
   id: string;
@@ -25,6 +26,8 @@ type MailState = {
   selectedMessage: MailMessage | null;
   loadingList: boolean;
   loadingMessage: boolean;
+  refreshing: boolean;
+  error: string | null;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
   composeFullscreen: boolean;
@@ -41,6 +44,7 @@ type MailState = {
   closeMessage: () => void;
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
+  refreshMessages: () => Promise<void>;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -61,6 +65,8 @@ export const useMailStore = create<MailState>((set) => ({
   selectedMessage: null,
   loadingList: false,
   loadingMessage: false,
+  refreshing: false,
+  error: null,
   composeOpen: false,
   composeMode: "new",
   composeFullscreen: false,
@@ -87,6 +93,18 @@ export const useMailStore = create<MailState>((set) => ({
   closeMessage: () => set({ selectedId: null, selectedMessage: null }),
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
+  refreshMessages: async () => {
+    set({ refreshing: true, error: null });
+    try {
+      const messages = await fetchMailMessages(useMailStore.getState().activeIdentityId, useMailStore.getState().folder);
+      set({ messages, refreshing: false });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : "Failed to refresh messages",
+        refreshing: false,
+      });
+    }
+  },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
   setComposeFullscreen: (composeFullscreen) => set({ composeFullscreen }),
