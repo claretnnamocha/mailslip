@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { MailFolder, MailMessage, MailMessageSummary } from "@/lib/mail/types";
+import { listMessages } from "@/lib/mail/client";
 
 export type IdentitySummary = {
   id: string;
@@ -24,6 +25,7 @@ type MailState = {
   selectedId: string | null;
   selectedMessage: MailMessage | null;
   loadingList: boolean;
+  listError: string | null;
   loadingMessage: boolean;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
@@ -49,7 +51,7 @@ type MailState = {
   clearSelection: () => void;
 };
 
-export const useMailStore = create<MailState>((set) => ({
+export const useMailStore = create<MailState>((set, get) => ({
   identities: [],
   workspaceRole: null,
   activeIdentityId: "all",
@@ -60,6 +62,7 @@ export const useMailStore = create<MailState>((set) => ({
   selectedId: null,
   selectedMessage: null,
   loadingList: false,
+  listError: null,
   loadingMessage: false,
   composeOpen: false,
   composeMode: "new",
@@ -86,6 +89,18 @@ export const useMailStore = create<MailState>((set) => ({
   setSelectedMessage: (selectedMessage) => set({ selectedMessage }),
   closeMessage: () => set({ selectedId: null, selectedMessage: null }),
   setLoadingList: (loadingList) => set({ loadingList }),
+  refreshMessages: async () => {
+    set({ loadingList: true, listError: null });
+    try {
+      const { folder, activeIdentityId } = get();
+      const identityId = activeIdentityId === "all" ? undefined : activeIdentityId;
+      const messages = await listMessages(folder, identityId);
+      set({ messages, loadingList: false, listError: null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to refresh messages";
+      set({ loadingList: false, listError: message });
+    }
+  },
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
