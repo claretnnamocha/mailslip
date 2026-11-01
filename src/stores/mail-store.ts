@@ -51,7 +51,7 @@ type MailState = {
   clearSelection: () => void;
 };
 
-export const useMailStore = create<MailState>((set, get) => ({
+export const useMailStore = create<MailState>((set, get, api) => ({
   identities: [],
   workspaceRole: null,
   activeIdentityId: "all",
