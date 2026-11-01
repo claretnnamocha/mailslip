@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark" | "system";
 type Density = "comfortable" | "compact";
@@ -46,48 +46,70 @@ function readStoredDensity(): Density {
   return "comfortable";
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [density, setDensityState] = useState<Density>("comfortable");
-  const [resolved, setResolved] = useState<"light" | "dark">("light");
+const THEME_CHANGE_EVENT = "mailslip-theme-change";
+const DENSITY_CHANGE_EVENT = "mailslip-density-change";
 
-  // Sync from storage + DOM before paint so React never reverts the inline script.
-  useLayoutEffect(() => {
-    const nextTheme = readStoredTheme();
-    const nextDensity = readStoredDensity();
-    setThemeState(nextTheme);
-    setDensityState(nextDensity);
-    applyThemeClass(nextTheme);
-    setResolved(resolveTheme(nextTheme));
-    document.documentElement.dataset.density = nextDensity;
-  }, []);
+function subscribeTheme(callback: () => void) {
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === "mailslip-theme") callback();
+  };
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(THEME_CHANGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(THEME_CHANGE_EVENT, callback);
+  };
+}
+
+function subscribeDensity(callback: () => void) {
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === "mailslip-density") callback();
+  };
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(DENSITY_CHANGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(DENSITY_CHANGE_EVENT, callback);
+  };
+}
+
+function subscribeSystemTheme(callback: () => void) {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  mq.addEventListener("change", callback);
+  return () => mq.removeEventListener("change", callback);
+}
+
+const getThemeSnapshot = () => readStoredTheme();
+const getThemeServerSnapshot = () => "system";
+const getDensitySnapshot = () => readStoredDensity();
+const getDensityServerSnapshot = () => "comfortable";
+const getSystemThemeSnapshot = () =>
+  window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+const getSystemThemeServerSnapshot = () => "light";
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
+  const density = useSyncExternalStore(subscribeDensity, getDensitySnapshot, getDensityServerSnapshot);
+  const systemTheme = useSyncExternalStore(
+    subscribeSystemTheme,
+    getSystemThemeSnapshot,
+    getSystemThemeServerSnapshot
+  );
+  const resolved = theme === "system" ? systemTheme : theme;
 
   useLayoutEffect(() => {
     applyThemeClass(theme);
-    setResolved(resolveTheme(theme));
     document.documentElement.dataset.density = density;
   }, [theme, density]);
 
-  useEffect(() => {
-    if (theme !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      const next = mq.matches ? "dark" : "light";
-      setResolved(next);
-      document.documentElement.style.colorScheme = next;
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [theme]);
-
   const setTheme = (value: Theme) => {
-    setThemeState(value);
     localStorage.setItem("mailslip-theme", value);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   };
 
   const setDensity = (value: Density) => {
-    setDensityState(value);
     localStorage.setItem("mailslip-density", value);
+    window.dispatchEvent(new Event(DENSITY_CHANGE_EVENT));
   };
 
   return (
