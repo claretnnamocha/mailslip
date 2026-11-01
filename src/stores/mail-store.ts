@@ -2,7 +2,6 @@
 
 import { create } from "zustand";
 import type { MailFolder, MailMessage, MailMessageSummary } from "@/lib/mail/types";
-import { fetchMessages } from "@/lib/mail/service";
 
 export type IdentitySummary = {
   id: string;
@@ -101,7 +100,14 @@ export const useMailStore = create<MailState>((set, get) => ({
     const { activeIdentityId, folder } = get();
     set({ refreshing: true, isReloading: true });
     try {
-      const messages = await fetchMessages(activeIdentityId, folder);
+      const params = new URLSearchParams({
+        identityId: activeIdentityId,
+        folder,
+      });
+      const res = await fetch(`/api/mail/messages?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to refresh messages");
+      const data = await res.json();
+      const messages = Array.isArray(data) ? data : data.messages ?? [];
       set({ messages });
     } finally {
       set({ refreshing: false, isReloading: false });
