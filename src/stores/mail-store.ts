@@ -25,6 +25,7 @@ type MailState = {
   selectedMessage: MailMessage | null;
   loadingList: boolean;
   loadingMessage: boolean;
+  isReloading: boolean;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
   composeFullscreen: boolean;
@@ -41,6 +42,7 @@ type MailState = {
   closeMessage: () => void;
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
+  setIsReloading: (v: boolean) => void;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -61,6 +63,7 @@ export const useMailStore = create<MailState>((set) => ({
   selectedMessage: null,
   loadingList: false,
   loadingMessage: false,
+  isReloading: false,
   composeOpen: false,
   composeMode: "new",
   composeFullscreen: false,
@@ -87,6 +90,7 @@ export const useMailStore = create<MailState>((set) => ({
   closeMessage: () => set({ selectedId: null, selectedMessage: null }),
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
+  setIsReloading: (isReloading) => set({ isReloading }),
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
   setComposeFullscreen: (composeFullscreen) => set({ composeFullscreen }),
