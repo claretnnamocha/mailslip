@@ -48,7 +48,7 @@ function isMailslipOwned(host) {
   return false;
 }
 
-export default {
+const worker = {
   async fetch(request, env) {
     const platform = (env.ORIGIN_HOST
       ? `https://${String(env.ORIGIN_HOST).replace(/^https?:\/\//, "")}`
@@ -86,3 +86,5 @@ export default {
     return fetch(target, init);
   },
 };
+
+export default worker;
