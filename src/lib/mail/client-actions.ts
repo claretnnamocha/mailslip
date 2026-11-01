@@ -5,6 +5,23 @@ export type MailTarget = Pick<
   "uid" | "remoteId" | "identityId" | "folder" | "id"
 >;
 
+export async function refreshMessages(params: Record<string, string | number | boolean | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      query.set(key, String(value));
+    }
+  }
+  const res = await fetch(`/api/mail/messages?${query.toString()}`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Could not refresh messages");
+  }
+  return res.json();
+}
+
 async function patchFlags(target: MailTarget, flags: { seen?: boolean; flagged?: boolean }) {
   const res = await fetch(`/api/mail/messages/${target.uid}`, {
     method: "PATCH",
