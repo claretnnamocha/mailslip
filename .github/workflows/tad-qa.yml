@@ -1,0 +1,41 @@
+# Added by TAD (The Agnostic Dev). Checks TAD's pull requests before
+# TAD reviews them: install, build, tests and a browser run of TAD's end-to-end specs.
+# Runs only on TAD's branches (tad/...). Optional: add a repository secret
+# TAD_QA_ENV with the .env lines this app needs to build and start.
+name: TAD QA
+on:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: tad-qa-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  qa:
+    name: TAD QA
+    if: startsWith(github.head_ref, 'tad/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: App settings
+        env:
+          TAD_QA_ENV: ${{ secrets.TAD_QA_ENV }}
+        run: if [ -n "$TAD_QA_ENV" ]; then printf '%s\n' "$TAD_QA_ENV" >> .env; fi
+      - name: Install
+        run: |
+          npm ci
+          npx prisma generate
+      - name: Build
+        run: |
+          npm run build
+          npm run lint
+      - name: End-to-end (TAD specs)
+        if: hashFiles('tad-qa/**/*.spec.ts') != ''
+        run: |
+          npm install --no-save @playwright/test@1
+          npx playwright install --with-deps chromium
+          (npx next start -p 3000 > /tmp/app.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3000 && break; sleep 2; done
+          TAD_QA_BASE_URL=http://localhost:3000 npx playwright test tad-qa --reporter=line || { echo "--- app log ---"; tail -n 80 /tmp/app.log; exit 1; }
