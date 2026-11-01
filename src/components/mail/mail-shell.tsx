@@ -399,7 +399,7 @@ export function MailShell() {
             )}
           </div>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={() => refresh()}
             disabled={isRefreshing}
