@@ -210,7 +210,6 @@ export function MessageList({
     setSelectedId,
     closeMessage,
     loadingList,
-    refreshing,
     folder,
     setFolder,
     folders,
@@ -237,6 +236,7 @@ export function MessageList({
   const [openThreadIds, setOpenThreadIds] = useState<string[]>([]);
   const [mailByFolder, setMailByFolder] = useState<Record<string, MailMessageSummary[]>>({});
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [reloading, setReloading] = useState(false);
   const seededFor = useRef<string | null>(null);
   const unreadExpanded = useRef(false);
   const searching = query.trim().length > 0;
@@ -432,6 +432,21 @@ export function MessageList({
   function syncNow() {
     setMailByFolder((prev) => (prev[folder] ? { [folder]: prev[folder] } : {}));
     onSync?.();
+  }
+
+  async function reloadFolder() {
+    if (reloading || !mailIdentityId) return;
+    setReloading(true);
+    try {
+      const params = new URLSearchParams({ folder, identityId: mailIdentityId });
+      const res = await fetch(`/api/mail/messages?${params}`);
+      if (!res.ok) throw new Error("Could not reload messages");
+      setMessages(await res.json());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reload messages");
+    } finally {
+      setReloading(false);
+    }
   }
 
   function removeMessages(ids: Set<string>) {
@@ -794,14 +809,14 @@ export function MessageList({
             type="button"
             aria-label="Reload"
             title="Reload"
-            onClick={() => onSync?.()}
-            disabled={refreshing}
+            onClick={reloadFolder}
+            disabled={reloading}
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-text-2 hover:bg-hover",
-              refreshing && "opacity-70",
+              reloading && "opacity-70",
             )}
           >
-            {refreshing ? (
+            {reloading ? (
               <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
             ) : (
               <ClockIcon size={15} />
