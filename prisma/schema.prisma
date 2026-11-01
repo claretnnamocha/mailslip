@@ -268,7 +268,7 @@ model PushSubscription {
 /// Highest unseen remote ids already considered for push, per mailbox.
 model MailNotifyCursor {
   identityId    String   @id
-  lastRemoteIds String[]
+  lastRemoteIds String[] @default([])
   lastCheckedAt DateTime @default(now())
 }
 
