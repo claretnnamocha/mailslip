@@ -185,7 +185,7 @@
           if (v !== void 0) d[k] = v;
         }
         return d;
-      }, []);
+      }, [entry.propsMeta]);
       return h(Root, { ...defaults, ...entry.propOverrides || {} });
     }
     const ReactDOM = getReactDOM();
