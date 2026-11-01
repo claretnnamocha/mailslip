@@ -208,7 +208,8 @@ export function MessageList({
     setSelectedId,
     closeMessage,
     loadingList,
-    refreshError,
+    error,
+    refreshMessages,
     folder,
     setFolder,
     folders,
@@ -799,12 +800,12 @@ export function MessageList({
           </button>
         </div>
       )}
-      {refreshError && (
+      {error && (
         <div className="flex items-center justify-between gap-2 border-b border-border bg-red-50 px-4 py-2">
-          <p className="text-[12px] text-red-700">{refreshError}</p>
+          <p className="text-[12px] text-red-700">{error}</p>
           <button
             type="button"
-            onClick={() => onSync?.()}
+            onClick={() => refreshMessages()}
             className="rounded-[7px] border border-red-300 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
           >
             Retry
@@ -839,11 +840,9 @@ export function MessageList({
           </div>
         )}
 
-        {searching && loadingList && searchThreads.length === 0 && <ListSkeleton />}
+        {searching && loadingList && <ListSkeleton />}
 
-        {searching &&
-          searchThreads.length > 0 &&
-          searchThreads.map((thread) => (
+        {searching && !loadingList && searchThreads.map((thread) => (
             <ThreadBlock
               key={thread.id}
               thread={thread}
