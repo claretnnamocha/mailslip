@@ -52,6 +52,8 @@ export function MailShell() {
     closeCompose,
     composeOpen,
     selectedMessage,
+    refresh,
+    isRefreshing,
   } = useMailStore();
   const folderRef = useRef(folder);
   folderRef.current = folder;
@@ -397,11 +399,11 @@ export function MailShell() {
           </div>
           <button
             className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50"
-            onClick={() => setSyncTick((tick) => tick + 1)}
-            disabled={loadingList}
+            onClick={() => refresh()}
+            disabled={isRefreshing}
             aria-label="Reload emails"
           >
-            <ClockIcon size={18} className={loadingList ? "animate-spin" : ""} />
+            <ClockIcon size={18} className={isRefreshing ? "animate-spin" : ""} />
           </button>
         </div>
 
