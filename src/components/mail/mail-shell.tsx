@@ -14,7 +14,7 @@ import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
-import { ClockIcon, MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+import { MenuIcon, PlusIcon, RefreshIcon, SearchIcon, XIcon } from "./icons";
 
 type NotifyPrefs = {
   badge: boolean;
@@ -52,8 +52,6 @@ export function MailShell() {
     closeCompose,
     composeOpen,
     selectedMessage,
-    refresh,
-    isRefreshing,
   } = useMailStore();
   const folderRef = useRef(folder);
   folderRef.current = folder;
@@ -399,11 +397,11 @@ export function MailShell() {
           </div>
           <button
             className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50"
-            onClick={() => refresh()}
-            disabled={isRefreshing}
+            onClick={() => setSyncTick((tick) => tick + 1)}
+            disabled={loadingList}
             aria-label="Reload emails"
           >
-            <ClockIcon size={18} className={isRefreshing ? "animate-spin" : ""} />
+            <RefreshIcon size={18} className={loadingList ? "animate-spin" : ""} />
           </button>
         </div>
 
