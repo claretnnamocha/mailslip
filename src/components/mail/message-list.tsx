@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMailStore } from "@/stores/mail-store";
 import { useDialog } from "@/components/dialog-provider";
+import { Button } from "@/components/ui/button";
 import { Menu, useMenu } from "@/components/ui/menu";
 import {
   blockSender,
@@ -216,10 +217,11 @@ export function MessageList({
     identities,
     setMessages,
     openCompose,
+    refreshMessages,
+    isRefreshing,
   } = useMailStore();
   const { density } = useTheme();
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
   const { prompt, confirm } = useDialog();
   const menu = useMenu();
   const compact = density === "compact";
@@ -788,19 +790,19 @@ export function MessageList({
           >
             <FilterIcon size={15} />
           </button>
-          <button
+          <Button
             type="button"
-            onClick={() => startTransition(() => router.refresh())}
-            disabled={isPending}
+            onClick={refreshMessages}
+            disabled={isRefreshing}
             className={cn(
               "flex h-8 shrink-0 items-center justify-center rounded-[9px] border px-2 text-[12px] font-medium",
-              isPending
+              isRefreshing
                 ? "border-border bg-surface-2 text-text-3 cursor-not-allowed"
                 : "border-border bg-surface-2 text-text-2 hover:bg-hover",
             )}
           >
-            {isPending ? "Refreshing…" : "Reload"}
-          </button>
+            {isRefreshing ? "Refreshing…" : "Reload"}
+          </Button>
           <button
             type="button"
             aria-label="More list options"
