@@ -414,7 +414,7 @@ export function MailShell() {
                 : "hidden md:flex md:min-w-0 md:flex-1"
             }
           >
-            <MessageView />
+            <MessageView key={selectedId} />
           </div>
         </div>
       </div>
