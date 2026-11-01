@@ -15,7 +15,7 @@
  *      saas-origin.uselinqr.io/*  → this Worker
  *      * / *                      → this Worker  (BYOD custom hostnames)
  *
- * Do NOT rely on a bare */* route alone without excluding other products on
+ * Do NOT rely on a bare catch-all route alone without excluding other products on
  * uselinqr.io — that is what made folio.uselinqr.io serve Mailslip.
  */
 
@@ -48,7 +48,7 @@ function isMailslipOwned(host) {
   return false;
 }
 
-export default {
+const worker = {
   async fetch(request, env) {
     const platform = (env.ORIGIN_HOST
       ? `https://${String(env.ORIGIN_HOST).replace(/^https?:\/\//, "")}`
@@ -86,3 +86,5 @@ export default {
     return fetch(target, init);
   },
 };
+
+export default worker;
