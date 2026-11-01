@@ -397,7 +397,10 @@ export function MailShell() {
           </div>
           <button
             className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50"
-            onClick={() => setSyncTick((tick) => tick + 1)}
+            onClick={() => {
+              silentRefresh.current = false;
+              setSyncTick((tick) => tick + 1);
+            }}
             disabled={loadingList}
             aria-label="Reload emails"
           >
