@@ -15,6 +15,7 @@ import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
 import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+import { Button } from "@/components/ui/button";
 
 type NotifyPrefs = {
   badge: boolean;
@@ -52,6 +53,8 @@ export function MailShell() {
     closeCompose,
     composeOpen,
     selectedMessage,
+    refresh,
+    isRefreshing,
   } = useMailStore();
   const folderRef = useRef(folder);
   folderRef.current = folder;
@@ -395,6 +398,18 @@ export function MailShell() {
               </button>
             )}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refresh()}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            {isRefreshing ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : null}
+            Reload
+          </Button>
         </div>
 
         <div className="flex min-h-0 flex-1">
