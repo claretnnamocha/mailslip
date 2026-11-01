@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMailStore } from "@/stores/mail-store";
 import { useDialog } from "@/components/dialog-provider";
@@ -216,11 +216,10 @@ export function MessageList({
     identities,
     setMessages,
     openCompose,
-    refreshMessages,
-    isRefreshing,
   } = useMailStore();
   const { density } = useTheme();
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const { prompt, confirm } = useDialog();
   const menu = useMenu();
   const compact = density === "compact";
@@ -791,16 +790,16 @@ export function MessageList({
           </button>
           <button
             type="button"
-            onClick={() => refreshMessages()}
-            disabled={isRefreshing}
+            onClick={() => startTransition(() => router.refresh())}
+            disabled={isPending}
             className={cn(
               "flex h-8 shrink-0 items-center justify-center rounded-[9px] border px-2 text-[12px] font-medium",
-              isRefreshing
+              isPending
                 ? "border-border bg-surface-2 text-text-3 cursor-not-allowed"
                 : "border-border bg-surface-2 text-text-2 hover:bg-hover",
             )}
           >
-            {isRefreshing ? "Refreshing…" : "Reload"}
+            {isPending ? "Refreshing…" : "Reload"}
           </button>
           <button
             type="button"
