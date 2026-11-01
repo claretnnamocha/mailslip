@@ -99,6 +99,8 @@ export const useMailStore = create<MailState>((set, get) => ({
       const params = new URLSearchParams({ folder });
       if (activeIdentityId !== "all") params.set("identityId", activeIdentityId);
       const res = await fetch(`/api/mail/messages?${params.toString()}`);
+      const current = get();
+      if (current.folder !== folder || current.activeIdentityId !== activeIdentityId) return;
       if (!res.ok) return;
       const data = await res.json();
       const messages = Array.isArray(data) ? data : data.messages;
