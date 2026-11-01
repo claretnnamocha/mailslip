@@ -102,7 +102,7 @@ export const useMailStore = create<MailState>((set, get) => ({
       if (!response.ok) {
         throw new Error("Failed to refresh messages");
       }
-      const messages = await response.json();
+      const messages = (await response.json()) as MailMessageSummary[];
       set({ messages });
     } finally {
       set({ isRefreshing: false });
