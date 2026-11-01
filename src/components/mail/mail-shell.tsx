@@ -14,7 +14,7 @@ import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
-import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+import { MenuIcon, PlusIcon, RefreshIcon, SearchIcon, XIcon } from "./icons";
 
 type NotifyPrefs = {
   badge: boolean;
@@ -149,7 +149,10 @@ export function MailShell() {
         const data = await res.json();
         if (!cancelled) setMessages(data);
       } catch {
-        if (!cancelled) setMessages([]);
+        if (!cancelled) {
+          setMessages([]);
+          if (!silent) toast.error("Failed to refresh emails");
+        }
       } finally {
         if (!cancelled && !silent) setLoadingList(false);
       }
@@ -395,6 +398,14 @@ export function MailShell() {
               </button>
             )}
           </div>
+          <button
+            className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50 disabled:pointer-events-none"
+            aria-label="Reload"
+            onClick={() => setSyncTick((tick) => tick + 1)}
+            disabled={loadingList}
+          >
+            <RefreshIcon size={18} />
+          </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
