@@ -52,6 +52,7 @@ import {
   InboxIcon,
   MoreIcon,
   PaperclipIcon,
+  RefreshCwIcon,
   SendIcon,
   StarIcon,
   TrashIcon,
@@ -216,6 +217,8 @@ export function MessageList({
     identities,
     setMessages,
     openCompose,
+    refreshMessages,
+    isRefreshing,
   } = useMailStore();
   const { density } = useTheme();
   const router = useRouter();
@@ -786,6 +789,19 @@ export function MessageList({
             )}
           >
             <FilterIcon size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="Reload emails"
+            title="Reload emails"
+            onClick={() => refreshMessages()}
+            disabled={isRefreshing}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-text-2 hover:bg-hover",
+              isRefreshing && "opacity-60 cursor-not-allowed",
+            )}
+          >
+            <RefreshCwIcon size={15} className={cn(isRefreshing && "animate-spin")} />
           </button>
           <button
             type="button"
