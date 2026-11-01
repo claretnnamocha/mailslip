@@ -843,19 +843,19 @@ export function MessageList({
         {searching && loadingList && <ListSkeleton />}
 
         {searching && !loadingList && searchThreads.map((thread) => (
-            <ThreadBlock
-              key={thread.id}
-              thread={thread}
-              selectedId={selectedId}
-              compact={compact}
-              expanded={openThreadIds.includes(thread.id)}
-              onToggleExpand={() => toggleThreadExpanded(thread.id)}
-              onOpenMessage={openMessage}
-              dragPayload={dragPayloadForThread(thread, folder)}
-              showPhoto={listPrefs.showContactPhoto}
-              onContextMenu={openMessageMenu}
-            />
-          ))}
+          <ThreadBlock
+            key={thread.id}
+            thread={thread}
+            selectedId={selectedId}
+            compact={compact}
+            expanded={openThreadIds.includes(thread.id)}
+            onToggleExpand={() => toggleThreadExpanded(thread.id)}
+            onOpenMessage={openMessage}
+            dragPayload={dragPayloadForThread(thread, folder)}
+            showPhoto={listPrefs.showContactPhoto}
+            onContextMenu={openMessageMenu}
+          />
+        ))}
 
         {searching && !loadingList && searchThreads.length === 0 && (
           <div className="px-6 py-10 text-center">
