@@ -140,26 +140,31 @@ export function MailShell() {
     let cancelled = false;
     const silent = silentRefresh.current;
     silentRefresh.current = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     (async () => {
       if (!silent) setLoadingList(true);
       try {
         const params = new URLSearchParams({ folder, identityId: activeIdentityId });
         if (query.trim()) params.set("q", query.trim());
-        const res = await fetch(`/api/mail/messages?${params}`);
-        if (!res.ok) throw new Error("Failed");
+        const res = await fetch(`/api/mail/messages?${params}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`Failed to load messages: ${res.status}`);
         const data = await res.json();
         if (!cancelled) setMessages(data);
       } catch {
         if (!cancelled) {
-          setMessages([]);
+          // Preserve existing messages on failure, just show error
           toast.error("Failed to load messages");
         }
       } finally {
+        clearTimeout(timeoutId);
         if (!cancelled && !silent) setLoadingList(false);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(timeoutId);
     };
   }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
 
