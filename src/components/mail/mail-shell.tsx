@@ -14,7 +14,8 @@ import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
-import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+import { MenuIcon, PlusIcon, SearchIcon, XIcon, RefreshCw } from "./icons";
+import { Button } from "@/components/ui/button";
 
 type NotifyPrefs = {
   badge: boolean;
@@ -56,6 +57,7 @@ export function MailShell() {
   const folderRef = useRef(folder);
   folderRef.current = folder;
   const silentRefresh = useRef(false);
+  const reloadRequested = useRef(false);
   const knownIds = useRef(new Set<string>());
   const alertsPrimed = useRef(false);
   const notifyPrefs = useRef<NotifyPrefs | null>(null);
@@ -139,23 +141,39 @@ export function MailShell() {
     let cancelled = false;
     const silent = silentRefresh.current;
     silentRefresh.current = false;
+    const reload = reloadRequested.current;
+    reloadRequested.current = false;
+    const controller = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (reload) {
+      timeoutId = setTimeout(() => controller.abort(), 5000);
+    }
     (async () => {
       if (!silent) setLoadingList(true);
       try {
         const params = new URLSearchParams({ folder, identityId: activeIdentityId });
         if (query.trim()) params.set("q", query.trim());
-        const res = await fetch(`/api/mail/messages?${params}`);
-        if (!res.ok) throw new Error("Failed");
+        const res = await fetch(`/api/mail/messages?${params}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`Failed to load messages: ${res.status}`);
         const data = await res.json();
         if (!cancelled) setMessages(data);
       } catch {
-        if (!cancelled) setMessages([]);
+        if (!cancelled) {
+          if (reload) {
+            toast.error("Failed to load messages");
+          } else if (!silent) {
+            setMessages([]);
+          }
+        }
       } finally {
+        if (timeoutId) clearTimeout(timeoutId);
         if (!cancelled && !silent) setLoadingList(false);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
 
@@ -395,6 +413,19 @@ export function MailShell() {
               </button>
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              reloadRequested.current = true;
+              setSyncTick((tick) => tick + 1);
+            }}
+            disabled={loadingList}
+            aria-label="Reload emails"
+            className="shrink-0"
+          >
+            <RefreshCw size={16} className={loadingList ? "animate-spin" : ""} />
+          </Button>
         </div>
 
         <div className="flex min-h-0 flex-1">
