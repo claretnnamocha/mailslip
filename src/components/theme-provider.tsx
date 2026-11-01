@@ -47,24 +47,12 @@ function readStoredDensity(): Density {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [density, setDensityState] = useState<Density>("comfortable");
-  const [resolved, setResolved] = useState<"light" | "dark">("light");
-
-  // Sync from storage + DOM before paint so React never reverts the inline script.
-  useLayoutEffect(() => {
-    const nextTheme = readStoredTheme();
-    const nextDensity = readStoredDensity();
-    setThemeState(nextTheme);
-    setDensityState(nextDensity);
-    applyThemeClass(nextTheme);
-    setResolved(resolveTheme(nextTheme));
-    document.documentElement.dataset.density = nextDensity;
-  }, []);
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
+  const [density, setDensityState] = useState<Density>(() => readStoredDensity());
+  const [resolved, setResolved] = useState<"light" | "dark">(() => resolveTheme(readStoredTheme()));
 
   useLayoutEffect(() => {
     applyThemeClass(theme);
-    setResolved(resolveTheme(theme));
     document.documentElement.dataset.density = density;
   }, [theme, density]);
 
@@ -82,6 +70,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (value: Theme) => {
     setThemeState(value);
+    setResolved(resolveTheme(value));
     localStorage.setItem("mailslip-theme", value);
   };
 
