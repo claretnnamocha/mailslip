@@ -90,7 +90,7 @@ export const useMailStore = create<MailState>((set, get, api) => ({
   closeMessage: () => set({ selectedId: null, selectedMessage: null }),
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
-  refreshMessages: async () => {
+  refreshMessages: async (): Promise<void> => {
     set({ isRefreshing: true });
     try {
       const { folder, activeIdentityId } = get();
@@ -101,9 +101,9 @@ export const useMailStore = create<MailState>((set, get, api) => ({
       if (!res.ok) throw new Error("Failed to refresh messages");
       const data = await res.json();
       set({ messages: data.messages });
-      set({ isRefreshing: false });
     } catch (error) {
       console.error("Failed to refresh messages", error);
+    } finally {
       set({ isRefreshing: false });
     }
   },
