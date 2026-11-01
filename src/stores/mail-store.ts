@@ -51,7 +51,7 @@ type MailState = {
   clearSelection: () => void;
 };
 
-export const useMailStore = create<MailState>((set) => ({
+export const useMailStore = create<MailState>((set, get) => ({
   identities: [],
   workspaceRole: null,
   activeIdentityId: "all",
@@ -92,8 +92,21 @@ export const useMailStore = create<MailState>((set) => ({
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   refreshMessages: async () => {
     set({ isRefreshing: true });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    set({ isRefreshing: false });
+    try {
+      const { folder, activeIdentityId } = get();
+      const params = new URLSearchParams({ folder });
+      if (activeIdentityId !== "all") {
+        params.set("identityId", activeIdentityId);
+      }
+      const response = await fetch(`/api/mail/messages?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to refresh messages");
+      }
+      const messages = await response.json();
+      set({ messages });
+    } finally {
+      set({ isRefreshing: false });
+    }
   },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
