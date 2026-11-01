@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import { useMailStore } from "@/stores/mail-store";
 import { formatMessageDate, initials } from "@/lib/utils";
@@ -72,51 +72,45 @@ export function MessageView() {
   const [decrypted, setDecrypted] = useState<string | null>(null);
   const [decrypting, setDecrypting] = useState(false);
   const [threadMessages, setThreadMessages] = useState<MailMessage[]>([]);
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
-
   useEffect(() => {
-    setDecrypted(null);
-    setThreadMessages([]);
-    setShowRemoteOnce(false);
-    setTrustedSenders([]);
-  }, [selectedId]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setSelectedMessage(null);
-      setThreadMessages([]);
-      return;
-    }
-    const summary = messagesRef.current.find((m) => m.id === selectedId);
-    if (!summary) return;
-    const members = threadContaining(messagesRef.current, selectedId)?.messages || [summary];
-    const unseenEarly = members.filter((message) => !message.seen);
-    if (unseenEarly.length > 0) {
-      const seenIds = new Set(unseenEarly.map((message) => message.id));
-      setMessages(
-        messagesRef.current.map((message) =>
-          seenIds.has(message.id) ? { ...message, seen: true } : message,
-        ),
-      );
-      void Promise.all(
-        unseenEarly.map((message) =>
-          fetch(`/api/mail/messages/${message.uid}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              identityId: message.identityId,
-              folder: message.folder,
-              remoteId: message.remoteId || String(message.uid),
-              seen: true,
-            }),
-          }),
-        ),
-      );
-    }
-
     let cancelled = false;
     (async () => {
+      if (!selectedId) {
+        setSelectedMessage(null);
+        setThreadMessages([]);
+        return;
+      }
+      setDecrypted(null);
+      setThreadMessages([]);
+      setShowRemoteOnce(false);
+      setTrustedSenders([]);
+      const summary = messages.find((m) => m.id === selectedId);
+      if (!summary) return;
+      const members = threadContaining(messages, selectedId)?.messages || [summary];
+      const unseenEarly = members.filter((message) => !message.seen);
+      if (unseenEarly.length > 0) {
+        const seenIds = new Set(unseenEarly.map((message) => message.id));
+        setMessages(
+          messages.map((message) =>
+            seenIds.has(message.id) ? { ...message, seen: true } : message,
+          ),
+        );
+        void Promise.all(
+          unseenEarly.map((message) =>
+            fetch(`/api/mail/messages/${message.uid}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                identityId: message.identityId,
+                folder: message.folder,
+                remoteId: message.remoteId || String(message.uid),
+                seen: true,
+              }),
+            }),
+          ),
+        );
+      }
+
       setLoadingMessage(true);
       try {
         const params = new URLSearchParams({
@@ -141,7 +135,7 @@ export function MessageView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, setLoadingMessage, setMessages, setSelectedMessage]);
+  }, [selectedId, messages, setLoadingMessage, setMessages, setSelectedMessage]);
 
   useEffect(() => {
     const pool = threadMessages.length > 0 ? threadMessages : selectedMessage ? [selectedMessage] : [];
