@@ -57,6 +57,7 @@ export function MailShell() {
   const folderRef = useRef(folder);
   folderRef.current = folder;
   const silentRefresh = useRef(false);
+  const reloadRequested = useRef(false);
   const knownIds = useRef(new Set<string>());
   const alertsPrimed = useRef(false);
   const notifyPrefs = useRef<NotifyPrefs | null>(null);
@@ -140,6 +141,8 @@ export function MailShell() {
     let cancelled = false;
     const silent = silentRefresh.current;
     silentRefresh.current = false;
+    const reload = reloadRequested.current;
+    reloadRequested.current = false;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     (async () => {
@@ -153,7 +156,9 @@ export function MailShell() {
         if (!cancelled) setMessages(data);
       } catch {
         if (!cancelled) {
-          // Preserve existing messages on failure, just show error
+          if (!silent && !reload) {
+            setMessages([]);
+          }
           toast.error("Failed to load messages");
         }
       } finally {
@@ -407,7 +412,10 @@ export function MailShell() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setSyncTick((tick) => tick + 1)}
+            onClick={() => {
+              reloadRequested.current = true;
+              setSyncTick((tick) => tick + 1);
+            }}
             disabled={loadingList}
             aria-label="Reload emails"
             className="shrink-0"
