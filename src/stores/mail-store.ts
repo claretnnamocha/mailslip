@@ -94,15 +94,23 @@ export const useMailStore = create<MailState>((set) => ({
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   refreshMessages: async () => {
+    const identityId = useMailStore.getState().activeIdentityId;
+    const folder = useMailStore.getState().folder;
     set({ refreshing: true, error: null });
     try {
-      const messages = await fetchMailMessages(useMailStore.getState().activeIdentityId, useMailStore.getState().folder);
-      set({ messages, refreshing: false });
+      const messages = await fetchMailMessages(identityId, folder);
+      const current = useMailStore.getState();
+      if (current.activeIdentityId === identityId && current.folder === folder) {
+        set({ messages, refreshing: false });
+      }
     } catch (err) {
-      set({
-        error: err instanceof Error ? err.message : "Failed to refresh messages",
-        refreshing: false,
-      });
+      const current = useMailStore.getState();
+      if (current.activeIdentityId === identityId && current.folder === folder) {
+        set({
+          error: err instanceof Error ? err.message : "Failed to refresh messages",
+          refreshing: false,
+        });
+      }
     }
   },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
