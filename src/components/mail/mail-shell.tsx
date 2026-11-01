@@ -14,7 +14,7 @@ import { playNotifySound, setUnreadBadge } from "@/lib/pwa";
 import { readShortcutsEnabled, subscribeShortcuts } from "@/lib/shortcuts";
 import { groupThreads, threadContaining } from "@/lib/mail/thread";
 import type { MailFolder } from "@/lib/mail/types";
-import { MenuIcon, PlusIcon, SearchIcon, XIcon } from "./icons";
+import { MenuIcon, PlusIcon, RefreshCw, SearchIcon, XIcon } from "./icons";
 
 type NotifyPrefs = {
   badge: boolean;
@@ -43,6 +43,7 @@ export function MailShell() {
     setFolders,
     setMessages,
     setLoadingList,
+    refreshMessages,
     loadingList,
     messages,
     selectedId,
@@ -395,6 +396,14 @@ export function MailShell() {
               </button>
             )}
           </div>
+          <button
+            className="rounded-lg p-2 text-text-2 hover:bg-hover disabled:opacity-50"
+            onClick={() => refreshMessages()}
+            disabled={loadingList}
+            aria-label="Refresh"
+          >
+            <RefreshCw size={18} />
+          </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
