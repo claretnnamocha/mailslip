@@ -46,6 +46,7 @@ type MailState = {
   setIsReloading: (v: boolean) => void;
   setRefreshing: (v: boolean) => void;
   refresh: () => Promise<void>;
+  refreshMessages: () => Promise<void>;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -112,6 +113,9 @@ export const useMailStore = create<MailState>((set, get) => ({
     } finally {
       set({ refreshing: false, isReloading: false });
     }
+  },
+  refreshMessages: async () => {
+    await get().refresh();
   },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
