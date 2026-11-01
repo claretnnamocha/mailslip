@@ -139,18 +139,20 @@ export function MailShell() {
     let cancelled = false;
     const silent = silentRefresh.current;
     silentRefresh.current = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     (async () => {
       if (!silent) setLoadingList(true);
       try {
         const params = new URLSearchParams({ folder, identityId: activeIdentityId });
         if (query.trim()) params.set("q", query.trim());
-        const res = await fetch(`/api/mail/messages?${params}`);
+        const res = await fetch(`/api/mail/messages?${params}`, { signal: controller.signal });
         if (!res.ok) throw new Error("Failed");
         const data = await res.json();
         if (!cancelled) setMessages(data);
       } catch {
         if (!cancelled) {
-          setMessages([]);
+          if (messages.length === 0) setMessages([]);
           if (!silent) toast.error("Failed to refresh emails");
         }
       } finally {
@@ -159,6 +161,7 @@ export function MailShell() {
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
 
