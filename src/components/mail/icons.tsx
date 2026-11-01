@@ -1,4 +1,7 @@
 import { SVGProps } from "react";
+import { RefreshCw, Loader2 } from "lucide-react";
+
+export { RefreshCw, Loader2 };
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
