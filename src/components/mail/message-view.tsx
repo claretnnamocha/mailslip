@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import { useMailStore } from "@/stores/mail-store";
 import { formatMessageDate, initials } from "@/lib/utils";
@@ -54,8 +54,6 @@ function senderKey(address: string) {
 export function MessageView() {
   const {
     selectedId,
-    selectedMessage,
-    setSelectedMessage,
     closeMessage,
     setLoadingMessage,
     loadingMessage,
@@ -72,15 +70,7 @@ export function MessageView() {
   const [decrypted, setDecrypted] = useState<string | null>(null);
   const [decrypting, setDecrypting] = useState(false);
   const [threadMessages, setThreadMessages] = useState<MailMessage[]>([]);
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
-
-  useEffect(() => {
-    setDecrypted(null);
-    setThreadMessages([]);
-    setShowRemoteOnce(false);
-    setTrustedSenders([]);
-  }, [selectedId]);
+  const selectedMessage = messages.find((m) => m.id === selectedId) ?? null;
 
   useEffect(() => {
     if (!selectedId) {
@@ -88,14 +78,15 @@ export function MessageView() {
       setThreadMessages([]);
       return;
     }
-    const summary = messagesRef.current.find((m) => m.id === selectedId);
+    const allMessages = useMailStore.getState().messages;
+    const summary = allMessages.find((m) => m.id === selectedId);
     if (!summary) return;
-    const members = threadContaining(messagesRef.current, selectedId)?.messages || [summary];
+    const members = threadContaining(allMessages, selectedId)?.messages || [summary];
     const unseenEarly = members.filter((message) => !message.seen);
     if (unseenEarly.length > 0) {
       const seenIds = new Set(unseenEarly.map((message) => message.id));
       setMessages(
-        messagesRef.current.map((message) =>
+        allMessages.map((message) =>
           seenIds.has(message.id) ? { ...message, seen: true } : message,
         ),
       );
@@ -130,7 +121,7 @@ export function MessageView() {
         if (cancelled) return;
         const ordered = [...data].sort((a, b) => +new Date(a.date) - +new Date(b.date));
         setThreadMessages(ordered);
-        setSelectedMessage(ordered[ordered.length - 1] || null);
+
       } catch {
         if (!cancelled) toast.error("Could not open message");
       } finally {
@@ -141,7 +132,7 @@ export function MessageView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, setLoadingMessage, setMessages, setSelectedMessage]);
+  }, [selectedId, setLoadingMessage, setMessages]);
 
   useEffect(() => {
     const pool = threadMessages.length > 0 ? threadMessages : selectedMessage ? [selectedMessage] : [];
@@ -311,7 +302,9 @@ export function MessageView() {
       await setFlagged(targets, flagged);
       const ids = new Set(targets.map((message) => message.id));
       setMessages(messages.map((message) => (ids.has(message.id) ? { ...message, flagged } : message)));
-      setSelectedMessage({ ...current, flagged });
+      setThreadMessages((prev) =>
+        prev.map((message) => (message.id === current.id ? { ...message, flagged } : message)),
+      );
     } catch {
       toast.error("Could not update flag");
     }
