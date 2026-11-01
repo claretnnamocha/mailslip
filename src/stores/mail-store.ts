@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { MailFolder, MailMessage, MailMessageSummary } from "@/lib/mail/types";
+import { fetchMessages } from "@/lib/mail/service";
 
 export type IdentitySummary = {
   id: string;
@@ -26,6 +27,7 @@ type MailState = {
   loadingList: boolean;
   loadingMessage: boolean;
   isReloading: boolean;
+  refreshing: boolean;
   composeOpen: boolean;
   composeMode: "new" | "reply" | "replyAll" | "forward";
   composeFullscreen: boolean;
@@ -43,6 +45,8 @@ type MailState = {
   setLoadingList: (v: boolean) => void;
   setLoadingMessage: (v: boolean) => void;
   setIsReloading: (v: boolean) => void;
+  setRefreshing: (v: boolean) => void;
+  refresh: () => Promise<void>;
   openCompose: (mode?: MailState["composeMode"]) => void;
   closeCompose: () => void;
   setComposeFullscreen: (v: boolean) => void;
@@ -51,7 +55,7 @@ type MailState = {
   clearSelection: () => void;
 };
 
-export const useMailStore = create<MailState>((set) => ({
+export const useMailStore = create<MailState>((set, get) => ({
   identities: [],
   workspaceRole: null,
   activeIdentityId: "all",
@@ -64,6 +68,7 @@ export const useMailStore = create<MailState>((set) => ({
   loadingList: false,
   loadingMessage: false,
   isReloading: false,
+  refreshing: false,
   composeOpen: false,
   composeMode: "new",
   composeFullscreen: false,
@@ -91,6 +96,17 @@ export const useMailStore = create<MailState>((set) => ({
   setLoadingList: (loadingList) => set({ loadingList }),
   setLoadingMessage: (loadingMessage) => set({ loadingMessage }),
   setIsReloading: (isReloading) => set({ isReloading }),
+  setRefreshing: (refreshing) => set({ refreshing }),
+  refresh: async () => {
+    const { activeIdentityId, folder } = get();
+    set({ refreshing: true, isReloading: true });
+    try {
+      const messages = await fetchMessages(activeIdentityId, folder);
+      set({ messages });
+    } finally {
+      set({ refreshing: false, isReloading: false });
+    }
+  },
   openCompose: (composeMode = "new") => set({ composeOpen: true, composeMode }),
   closeCompose: () => set({ composeOpen: false, composeFullscreen: false, composeMode: "new" }),
   setComposeFullscreen: (composeFullscreen) => set({ composeFullscreen }),
