@@ -45,6 +45,7 @@ import {
   ArchiveIcon,
   BanIcon,
   ChevronIcon,
+  ClockIcon,
   EditIcon,
   FilterIcon,
   FlagIcon,
@@ -57,6 +58,7 @@ import {
   TrashIcon,
 } from "./icons";
 import { useTheme } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
 
 const DRAG_MIME = "application/x-mailslip-mail";
 
@@ -208,6 +210,7 @@ export function MessageList({
     setSelectedId,
     closeMessage,
     loadingList,
+    refreshing,
     folder,
     setFolder,
     folders,
@@ -787,6 +790,23 @@ export function MessageList({
           >
             <FilterIcon size={15} />
           </button>
+          <Button
+            type="button"
+            aria-label="Reload"
+            title="Reload"
+            onClick={() => onSync?.()}
+            disabled={refreshing}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-text-2 hover:bg-hover",
+              refreshing && "opacity-70",
+            )}
+          >
+            {refreshing ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <ClockIcon size={15} />
+            )}
+          </Button>
           <button
             type="button"
             aria-label="More list options"
