@@ -99,7 +99,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   setRefreshing: (refreshing) => set({ refreshing }),
   refresh: async () => {
     const { activeIdentityId, folder } = get();
-    set({ refreshing: true, isReloading: true });
+    set({ refreshing: true, isReloading: true, loadingList: true });
     try {
       const params = new URLSearchParams({
         identityId: activeIdentityId,
@@ -111,7 +111,7 @@ export const useMailStore = create<MailState>((set, get) => ({
       const messages = Array.isArray(data) ? data : data.messages ?? [];
       set({ messages });
     } finally {
-      set({ refreshing: false, isReloading: false });
+      set({ refreshing: false, isReloading: false, loadingList: false });
     }
   },
   refreshMessages: async () => {
