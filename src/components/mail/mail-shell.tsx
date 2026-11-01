@@ -144,7 +144,10 @@ export function MailShell() {
     const reload = reloadRequested.current;
     reloadRequested.current = false;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (reload) {
+      timeoutId = setTimeout(() => controller.abort(), 5000);
+    }
     (async () => {
       if (!silent) setLoadingList(true);
       try {
@@ -156,22 +159,21 @@ export function MailShell() {
         if (!cancelled) setMessages(data);
       } catch {
         if (!cancelled) {
-          if (!silent && !reload) {
-            setMessages([]);
-          }
-          if (!silent) {
+          if (reload) {
             toast.error("Failed to load messages");
+          } else if (!silent) {
+            setMessages([]);
           }
         }
       } finally {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         if (!cancelled && !silent) setLoadingList(false);
       }
     })();
     return () => {
       cancelled = true;
       controller.abort();
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [identities, activeIdentityId, folder, query, syncTick, setLoadingList, setMessages]);
 
